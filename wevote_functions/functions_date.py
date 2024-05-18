@@ -82,30 +82,25 @@ DATE_FORMAT_BD_Y_AT_HM ="%B %d, %Y at %H:%M"                # March 04, 2024 at 
 DATE_FORMAT_D = "%d"                                        # 04
 
 # parse string into localized date time object
-def parse_date_string(date_string, date_format, timezone_name="America/Los_Angeles"):
+def generate_localized_datetime_from_str(date_string, date_format, timezone_name="America/Los_Angeles"):
     timezone = pytz.timezone(timezone_name)
     date_time = datetime.strptime(date_string, date_format)
-    return timezone.localize(date_time)
-
-# retrieve the current datetime and timezone in the specified timezone
-def get_timezone_and_datetime_now(timezone_name="America/Los_Angeles", datetime_obj=None, datetime_format=None):
-    timezone = pytz.timezone(timezone_name)
-    if datetime_obj is None:
-        datetime_obj = datetime.now()
-    elif isinstance(datetime_obj, str) and datetime_format:
-        localized_datetime = parse_date_string(datetime_obj, datetime_format, timezone_name)
-        return timezone, localized_datetime
-
-    localized_datetime = timezone.localize(datetime_obj)
+    localized_datetime = timezone.localize(date_time)
     return timezone, localized_datetime
 
+# retrieve the current datetime and timezone in the specified timezone
+def generate_localized_datetime_from_obj(timezone_name="America/Los_Angeles"):
+    timezone = pytz.timezone(timezone_name)
+    localized_datetime = timezone.localize(datetime.now())
+    return timezone, localized_datetime
 
-
-# convert current date to a date as integer. replaces all instances when searching for "pytz.timezone"
+# convert current localized date to a date as integer. replaces all instances when searching for "pytz.timezone"
 #     -import function into file
 #     -replace all instances when searching "pytz.timezone" with "date_today_as_integer = get_current_date_as_integer()"
-def get_current_date_as_integer(timezone_name="America/Los_Angeles"):
-    _, datetime_now = get_timezone_and_datetime_now(timezone_name)
+#     NEED TO INCLUDE FUNCTIONALITY THAT CONVERTS UTC TO INTEGERS
+def generate_current_date_as_integer(timezone_name="America/Los_Angeles"):
+    datetime_now = generate_localized_datetime_from_obj(timezone_name)[1]
+    datetime_now_as_integer = convert_date_to_date_as_integer(datetime_now)
     return convert_date_to_date_as_integer(datetime_now)
 
 
