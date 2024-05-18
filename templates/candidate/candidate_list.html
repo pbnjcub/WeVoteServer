@@ -16,7 +16,7 @@
 
 {% csrf_token %}
 
-<form name="candidate_choose_election" method="get" action="{% url 'candidate:candidate_list' %}">
+<form name="candidate_choose_election" id="candidate_choose_election_id" method="get" action="{% url 'candidate:candidate_list' %}">
     {# These are input checkboxes from a form further down this page #}
 
 {#    <input type="hidden" name="exclude_candidate_analysis_done" value="{{ exclude_candidate_analysis_done }}" />#}
@@ -90,8 +90,8 @@
         {% endfor %}
         </select>
         {% if state_code != "" %}
-        <a href="{% url 'candidate:candidate_list' %}?google_civic_election_id={{ google_civic_election_id }}&candidate_search={{ candidate_search }}{% if show_all_elections %}&show_all_elections=1{% endif %}">
-            show all states</a>
+{#        <a href="{% url 'candidate:candidate_list' %}?google_civic_election_id={{ google_civic_election_id }}&candidate_search={{ candidate_search }}{% if show_all_elections %}&show_all_elections=1{% endif %}">#}
+            <span class="u-link-color u-link-underline-on-hover" onClick={showAllStates("candidate_choose_election_id")}>show all states</span>
         {% endif %}
     {% endif %}{# End of if state_list #}
 </form>
@@ -247,11 +247,11 @@
 
         <li><a href="{% url 'import_export_facebook:bulk_retrieve_facebook_photos' %}?google_civic_election_id={{ google_civic_election_id }}&state_code={{ state_code }}&page={{ current_page_number }}"
                target="_blank" >
-            Retrieve Facebook Photos for up to <strong>{{facebook_urls_without_picture_urls}}</strong> Candidates <span class="glyphicon glyphicon-new-window"></span></a> (If the count does not decrease with each click, you are done for this election)</li>
+            Retrieve Facebook Photos for up to <strong>{{facebook_urls_without_picture_urls|intcomma}}</strong> Candidates <span class="glyphicon glyphicon-new-window"></span></a> (If the count does not decrease with each click, you are done for this election)</li>
 
         <li><a href="{% url 'ballotpedia:bulk_retrieve_ballotpedia_photos' %}?google_civic_election_id={{ google_civic_election_id }}&state_code={{ state_code }}&page={{ current_page_number }}"
                target="_blank" >
-            Retrieve Ballotpedia Photos for up to <strong>{{ballotpedia_urls_without_picture_urls}}</strong> Candidates <span class="glyphicon glyphicon-new-window"></span></a> (If the count does not decrease with each click, you are done for this election)</li>
+            Retrieve Ballotpedia Photos for up to <strong>{{ballotpedia_urls_without_picture_urls|intcomma}}</strong> Candidates <span class="glyphicon glyphicon-new-window"></span></a> (50 at a time)</li>
 
         <li><a href="{% url 'google_custom_search:bulk_retrieve_possible_google_search_users' %}?google_civic_election_id={{ google_civic_election_id }}&state_code={{ state_code }}"
                target="_blank" >
@@ -281,6 +281,12 @@
         </li>
         <li>Prepare: <a href="{% url 'candidate:update_profile_image_background_color' %}?candidate_year={{ show_this_year_of_candidates }}&state_code={{ state_code }}" >
             Update 5,000 Candidates' background colors &#40;may take 10 minutes&#41;</a></li>
+        <li><a href="{% url 'import_export_facebook:bulk_retrieve_facebook_photos' %}?google_civic_election_id={{ google_civic_election_id }}&state_code={{ state_code }}&page={{ current_page_number }}"
+               target="_blank" >
+            Retrieve Facebook Photos for up to <strong>{{facebook_urls_without_picture_urls|intcomma}}</strong> Candidates <span class="glyphicon glyphicon-new-window"></span></a> (If the count does not decrease with each click, you are done for this election)</li>
+        <li><a href="{% url 'ballotpedia:bulk_retrieve_ballotpedia_photos' %}?google_civic_election_id={{ google_civic_election_id }}&state_code={{ state_code }}&page={{ current_page_number }}"
+               target="_blank" >
+            Retrieve Ballotpedia Photos for up to <strong>{{ballotpedia_urls_without_picture_urls|intcomma}}</strong> Candidates <span class="glyphicon glyphicon-new-window"></span></a> (50 at a time)</li>
     </ul>
 {% endif %}
 
@@ -771,6 +777,11 @@
     function showElement(elementId) {
       var x = document.getElementById(elementId);
       x.style.display = "block";
+    }
+    function showAllStates(currentFormId) {
+        const currentForm = document.getElementById(currentFormId);
+        currentForm.state_code.value = '';
+        currentForm.submit();
     }
     $(function() {
         $('#exclude_candidate_analysis_done_id').change(function() {

@@ -23,20 +23,22 @@ from admin_tools.views import redirect_to_sign_in_page
 from campaign.models import CampaignXManager
 from candidate.controllers import retrieve_candidate_photos
 from candidate.models import CandidateCampaign, CandidateListManager, CandidateManager, CandidateToOfficeLink, \
-    KIND_OF_LOG_ENTRY_ANALYSIS_COMMENT, KIND_OF_LOG_ENTRY_LINK_ADDED, \
+    KIND_OF_LOG_ENTRY_ANALYSIS_COMMENT, KIND_OF_LOG_ENTRY_LINK_ADDED, PROFILE_IMAGE_TYPE_BALLOTPEDIA, \
     PROFILE_IMAGE_TYPE_FACEBOOK, PROFILE_IMAGE_TYPE_TWITTER, PROFILE_IMAGE_TYPE_UNKNOWN, \
     PROFILE_IMAGE_TYPE_UPLOADED, PROFILE_IMAGE_TYPE_VOTE_USA
 from config.base import get_environment_variable
 from election.models import Election
 from exception.models import handle_record_found_more_than_one_exception, \
     handle_record_not_found_exception, handle_record_not_saved_exception, print_to_log
-from image.controllers import create_resized_images
+from image.controllers import create_resized_images, organize_object_photo_fields_based_on_image_type_currently_active
+from import_export_ballotpedia.controllers import get_photo_url_from_ballotpedia
 from import_export_vote_smart.models import VoteSmartRatingOneCandidate
 from import_export_vote_smart.votesmart_local import VotesmartApiError
 from office.models import ContestOffice
 from position.models import PositionEntered, PositionListManager
 from representative.models import Representative, RepresentativeManager
 from volunteer_task.controllers import change_tracking, change_tracking_boolean
+# from politician.controllers_recommendation import update_recommend  # 2024-05-15: Causing problems on live servers
 from volunteer_task.models import VOLUNTEER_ACTION_DUPLICATE_POLITICIAN_ANALYSIS, \
     VOLUNTEER_ACTION_POLITICIAN_DEDUPLICATION, VolunteerTaskManager
 from voter.models import fetch_voter_from_voter_device_link, voter_has_authority, VoterManager
@@ -54,7 +56,8 @@ from .controllers import add_alternate_names_to_next_spot, add_twitter_handle_to
     update_politician_details_from_candidate, \
     merge_if_duplicate_politicians, merge_these_two_politicians, politicians_import_from_master_server
 from .models import Politician, PoliticianChangeLog, PoliticianManager, POLITICIAN_UNIQUE_ATTRIBUTES_TO_BE_CLEARED, \
-    POLITICIAN_UNIQUE_IDENTIFIERS, PoliticiansArePossibleDuplicates, POLITICAL_DATA_MANAGER, UNKNOWN
+    POLITICIAN_UNIQUE_IDENTIFIERS, PoliticiansArePossibleDuplicates, POLITICAL_DATA_MANAGER, UNKNOWN, \
+    RecommendedPoliticianLinkByPolitician
 from politician.controllers_generate_color import generate_background, validate_hex
 POLITICIANS_SYNC_URL = get_environment_variable("POLITICIANS_SYNC_URL")  # politiciansSyncOut
 WE_VOTE_SERVER_ROOT_URL = get_environment_variable("WE_VOTE_SERVER_ROOT_URL")
@@ -511,7 +514,7 @@ def politician_list_view(request):
 
         if len(update_list) > 0:
             try:
-                Politician.objects.bulk_update( update_list, ['profile_image_background_color', 'profile_image_background_color_needed'])
+                Politician.objects.bulk_update(update_list, ['profile_image_background_color', 'profile_image_background_color_needed'])
                 message = \
                     "Politicians updated: {politicians_updated:,}. " \
                     "Politicians without picture URL:  {politicians_not_updated:,}. " \
@@ -2425,7 +2428,6 @@ def politician_edit_process_view(request):
                     politician_on_stage.we_vote_hosted_profile_image_url_medium = None
                     politician_on_stage.we_vote_hosted_profile_image_url_tiny = None
             if profile_image_type_currently_active is not False:
-                from image.controllers import organize_object_photo_fields_based_on_image_type_currently_active
                 results = organize_object_photo_fields_based_on_image_type_currently_active(
                     object_with_photo_fields=politician_on_stage,
                     profile_image_type_currently_active=profile_image_type_currently_active,
@@ -2450,6 +2452,7 @@ def politician_edit_process_view(request):
                 politician_on_stage.ballot_guide_official_statement = ballot_guide_official_statement
             if ballotpedia_politician_name is not False:
                 politician_on_stage.ballotpedia_politician_name = ballotpedia_politician_name
+            ballotpedia_politician_url_changed = False
             if ballotpedia_politician_url is not False:
                 change_results = change_tracking(
                     existing_value=politician_on_stage.ballotpedia_politician_url,
@@ -2462,7 +2465,24 @@ def politician_edit_process_view(request):
                 if change_results['change_description_changed']:
                     change_description += change_results['change_description']
                     change_description_changed = True
+                    ballotpedia_politician_url_changed = True
                 politician_on_stage.ballotpedia_politician_url = ballotpedia_politician_url
+                if not positive_value_exists(ballotpedia_politician_url):
+                    politician_on_stage.ballotpedia_photo_url = None
+                    politician_on_stage.ballotpedia_photo_url_is_broken = False
+                    politician_on_stage.ballotpedia_photo_url_is_placeholder = False
+                    politician_on_stage.we_vote_hosted_profile_ballotpedia_image_url_large = None
+                    politician_on_stage.we_vote_hosted_profile_ballotpedia_image_url_medium = None
+                    politician_on_stage.we_vote_hosted_profile_ballotpedia_image_url_tiny = None
+                    if profile_image_type_currently_active == PROFILE_IMAGE_TYPE_BALLOTPEDIA:
+                        politician_on_stage.profile_image_type_currently_active = PROFILE_IMAGE_TYPE_UNKNOWN
+                        politician_on_stage.we_vote_hosted_profile_image_url_large = None
+                        politician_on_stage.we_vote_hosted_profile_image_url_medium = None
+                        politician_on_stage.we_vote_hosted_profile_image_url_tiny = None
+                        results = organize_object_photo_fields_based_on_image_type_currently_active(
+                            object_with_photo_fields=politician_on_stage)
+                        if results['success']:
+                            politician_on_stage = results['object_with_photo_fields']
             try:
                 if birth_date is not False:
                     if birth_date == '':
@@ -2833,6 +2853,14 @@ def politician_edit_process_view(request):
             politician_we_vote_id = politician_on_stage.we_vote_id
             vote_usa_politician_id = politician_on_stage.vote_usa_politician_id
             politician_id = politician_on_stage.id
+
+            if (ballotpedia_politician_url_changed \
+                or not positive_value_exists(politician_on_stage.ballotpedia_photo_url)) \
+                    and positive_value_exists(ballotpedia_politician_url):
+                results = get_photo_url_from_ballotpedia(
+                    incoming_object=politician_on_stage,
+                    save_to_database=True,
+                )
 
             # Now generate_seo_friendly_path if there isn't one
             seo_results = politician_manager.generate_seo_friendly_path(
@@ -3798,3 +3826,48 @@ def update_profile_image_background_color_view_for_politicians(request):
                              "".format(e=e))
 
     return HttpResponseRedirect(reverse('politician:politician_list', args=()))
+
+
+def update_recommended_politicians_view(request):
+    """
+       Update recommended politicians based on certain criteria.
+       This view function updates the recommended politicians by performing several operations such as clustering,
+       one-hot encoding, TF-IDF, and adding clusters. It then selects politicians from the same cluster and a few from
+       outside the cluster as recommendations.
+       Parameters:
+       - request: Django HttpRequest object
+       Returns:
+       - HttpResponseRedirect: Redirects to the politician list page with a specified state code.
+       """
+
+    # admin, analytics_admin, partner_organization, political_data_manager, political_data_viewer, verified_volunteer
+    authority_required = {'verified_volunteer'}
+    if not voter_has_authority(request, authority_required):
+        return redirect_to_sign_in_page(request, authority_required)
+
+    status = ""
+    success = True
+    state_code = request.GET.get('state_code', "")
+
+    try:
+        RecommendedPoliticianLinkByPolitician.objects.all().delete()
+        update_recommend()
+    except Exception as e:
+        status += "Could not update: " + str(e) + " "
+
+    validation_list = []
+    sample_num = 100
+    for _ in range(sample_num):
+        random_politician = Politician.objects.order_by('?').first()
+        record = Politician.get_recommendation(random_politician)
+        validation_list.extend(record)
+
+    message = \
+        "avg recommended number : {politicians_avgs:,}. " \
+        "".format(
+            politicians_avgs=len(validation_list) / sample_num)
+    messages.add_message(request, messages.INFO, message)
+    return HttpResponseRedirect(reverse('politician:politician_list', args=()) +
+                                "?state_code={state_code}"
+                                "".format(
+                                    state_code=state_code))
