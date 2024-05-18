@@ -102,4 +102,4 @@ def generate_localized_datetime_from_obj(timezone_name="America/Los_Angeles"):
 def generate_current_date_as_integer(timezone_name="America/Los_Angeles"):
     datetime_now = generate_localized_datetime_from_obj(timezone_name)[1]
     datetime_now_as_integer = convert_date_to_date_as_integer(datetime_now)
-    return convert_date_to_date_as_integer(datetime_now)
+    return datetime_now_as_integer
