@@ -99,7 +99,7 @@ def generate_localized_datetime_from_obj(timezone_name="America/Los_Angeles"):
 #     -import function into file
 #     -replace all instances when searching "pytz.timezone" with "date_today_as_integer = get_current_date_as_integer()"
 #     NEED TO INCLUDE FUNCTIONALITY THAT CONVERTS UTC TO INTEGERS
-def generate_current_date_as_integer(timezone_name="America/Los_Angeles"):
+def generate_localized_datetime_as_integer(timezone_name="America/Los_Angeles"):
     datetime_now = generate_localized_datetime_from_obj(timezone_name)[1]
     datetime_now_as_integer = convert_date_to_date_as_integer(datetime_now)
     return datetime_now_as_integer
