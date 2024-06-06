@@ -113,6 +113,9 @@ CANDIDATE_UNIQUE_IDENTIFIERS = [
     'we_vote_hosted_profile_vote_usa_image_url_tiny',
     'wikipedia_page_title',
     'wikipedia_photo_url',
+    # 'wikipedia_photo_url_is_broken',
+    'wikipedia_photo_does_not_exist',
+    'wikipedia_url',
     'withdrawal_date',
     'withdrawn_from_election',
     'youtube_url',
@@ -2309,6 +2312,11 @@ class CandidateListManager(models.Manager):
                     'twitter_followers_count':      candidate.twitter_followers_count,
                     'youtube_url':                  candidate.youtube_url,
                     'we_vote_id': candidate.we_vote_id,
+                    'wikipedia_photo_url': candidate.wikipedia_photo_url,
+                    # 'wikipedia_photo_url_is_broken': candidate.wikipedia_photo_url_is_broken,
+                    'wikipedia_photo_does_not_exist': candidate.wikipedia_photo_does_not_exist,
+                    'wikipedia_url': candidate.wikipedia_url,
+
                 }
                 candidate_list_json.append(one_candidate.copy())
 
@@ -2561,10 +2569,8 @@ class CandidateCampaign(models.Model):
         verbose_name="state this candidate serves", max_length=2, null=True, blank=True, db_index=True)
     date_last_updated = models.DateTimeField(null=True, auto_now=True)
     # The URL for the candidate's campaign website.
-    candidate_url = models.URLField(
-        verbose_name='website url of candidate', max_length=255, blank=True, null=True)
-    candidate_contact_form_url = models.URLField(
-        verbose_name='website url of candidate contact form', max_length=255, blank=True, null=True)
+    candidate_url = models.TextField(verbose_name='website url of candidate', null=True)
+    candidate_contact_form_url = models.TextField(verbose_name='website url of candidate contact form', null=True)
     # This is the URL for the candidate's photo on Facebook's servers
     facebook_photo_url = models.TextField(blank=True, null=True)
     facebook_photo_url_is_broken = models.BooleanField(default=False)
@@ -2667,6 +2673,9 @@ class CandidateCampaign(models.Model):
         verbose_name="Page title on Wikipedia", max_length=255, null=True, blank=True)
     wikipedia_photo_url = models.TextField(
         verbose_name='url of remote wikipedia profile photo', blank=True, null=True)
+    # wikipedia_photo_url_is_broken = models.BooleanField(default=False)
+    wikipedia_photo_does_not_exist = models.BooleanField(default=False)
+
     wikipedia_profile_image_url_https = models.TextField(
         verbose_name='locally cached candidate profile image from wikipedia', blank=True, null=True)
     wikipedia_url = models.TextField(null=True)
@@ -4635,6 +4644,16 @@ class CandidateManager(models.Manager):
             if 'vote_usa_politician_id' in update_values else None
         vote_usa_profile_image_url_https = update_values['vote_usa_profile_image_url_https'] \
             if 'vote_usa_profile_image_url_https' in update_values else None
+        wikipedia_page_title = update_values['wikipedia_page_title'] \
+            if 'wikipedia_page_title' in update_values else '' if 'wikipedia_page_title' in update_values else ''
+        wikipedia_photo_url = update_values['wikipedia_photo_url'] \
+            if 'wikipedia_photo_url' in update_values else ''
+        # wikipedia_photo_url_is_broken = update_values['wikipedia_photo_url_is_broken'] \
+        #     if 'wikipedia_photo_url_is_broken' in update_values else ''
+        wikipedia_photo_does_not_exist = update_values['wikipedia_photo_does_not_exist'] \
+            if 'wikipedia_photo_does_not_exist' in update_values else ''
+
+
 
         if not positive_value_exists(candidate_name) or not positive_value_exists(contest_office_we_vote_id) \
                 or not positive_value_exists(contest_office_id) \
@@ -4707,6 +4726,11 @@ class CandidateManager(models.Manager):
                 new_candidate.vote_usa_office_id = vote_usa_office_id
                 new_candidate.vote_usa_politician_id = vote_usa_politician_id
                 new_candidate.vote_usa_profile_image_url_https = vote_usa_profile_image_url_https
+                new_candidate.wikipedia_page_title = wikipedia_page_title
+                new_candidate.wikipedia_photo_url = wikipedia_photo_url
+                # new_candidate.wikipedia_photo_url_is_broken = wikipedia_photo_url_is_broken
+                new_candidate.wikipedia_photo_does_not_exist = False
+
                 new_candidate.save()
 
                 status += "CANDIDATE_CREATE_THEN_UPDATE_SUCCESS "
@@ -4901,6 +4925,18 @@ class CandidateManager(models.Manager):
                         update_values['vote_usa_profile_image_url_https']
                     )
                     values_changed = True
+                if 'wikipedia_photo_url' in update_values:
+                    existing_candidate_entry.wikipedia_photo_url = update_values['wikipedia_photo_url']
+                    values_changed = True
+                # if 'wikipedia_photo_url_is_broken' in update_values:
+                #     existing_candidate_entry.wikipedia_photo_url_is_broken = \
+                #         update_values['wikipedia_photo_url_is_broken']
+                #     values_changed = True
+                if 'wikipedia_photo_does_not_exist' in update_values:
+                    existing_candidate_entry.wikipedia_photo_does_not_exist = \
+                        update_values['wikipedia_photo_does_not_exist']
+                    values_changed = True
+
 
                 # now go ahead and save this entry (update)
                 if values_changed:

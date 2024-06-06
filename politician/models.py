@@ -194,6 +194,8 @@ class Politician(models.Model):
     wikipedia_url = models.TextField(null=True)
     wikipedia_photo_url = models.TextField(
         verbose_name='url of remote wikipedia profile photo', blank=True, null=True)
+    wikipedia_photo_does_not_exist = models.BooleanField(default=False)
+    # wikipedia_photo_url_is_broken = models.BooleanField(default=False)
     wikipedia_profile_image_url_https = models.TextField(
         verbose_name='locally cached candidate profile image from wikipedia', blank=True, null=True)
     ballotpedia_photo_url = models.TextField(
@@ -227,8 +229,7 @@ class Politician(models.Model):
     politician_url3 = models.TextField(blank=True, null=True)
     politician_url4 = models.TextField(blank=True, null=True)
     politician_url5 = models.TextField(blank=True, null=True)
-    politician_contact_form_url = models.URLField(
-        verbose_name='website url of contact form', max_length=255, blank=True, null=True)
+    politician_contact_form_url = models.TextField(verbose_name='website url of contact form', null=True)
 
     politician_twitter_handle = models.CharField(max_length=255, null=True, unique=False)
     politician_twitter_handle2 = models.CharField(max_length=255, null=True, unique=False)

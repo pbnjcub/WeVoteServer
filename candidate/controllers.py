@@ -20,6 +20,7 @@ from image.controllers import retrieve_all_images_for_one_candidate, cache_maste
 from import_export_vote_smart.controllers import retrieve_and_match_candidate_from_vote_smart, \
     retrieve_candidate_photo_from_vote_smart
 from office.models import ContestOfficeListManager, ContestOfficeManager
+from organization.models import ORGANIZATION_WEBSITES_TO_EXCLUDE_FROM_SCRAPER
 from politician.models import PoliticianManager
 from position.controllers import move_positions_to_another_candidate, update_all_position_details_from_candidate
 from twitter.models import TwitterUserManager
@@ -2550,7 +2551,7 @@ def retrieve_next_or_most_recent_office_for_candidate(candidate_we_vote_id=''):
     return results
 
 
-def save_image_to_candidate_table(candidate, image_url, source_link, url_is_broken, kind_of_source_website=None):
+def save_image_to_candidate_table(candidate, image_url, source_link, url_is_broken, kind_of_source_website=None, page_title=None):
     status = ''
     success = True
     cache_results = {
@@ -2627,7 +2628,8 @@ def save_image_to_candidate_table(candidate, image_url, source_link, url_is_brok
         cached_wikipedia_profile_image_url_https = cache_results['cached_wikipedia_image_url_https']
         candidate.wikipedia_photo_url = image_url
         candidate.wikipedia_profile_image_url_https = cached_wikipedia_profile_image_url_https
-        candidate.wikipedia_page_title = source_link
+        # candidate.wikipedia_page_title = source_link.rsplit('/', 1)[-1].replace("_", " ")
+        candidate.wikipedia_page_title = page_title
         if positive_value_exists(candidate.wikipedia_profile_image_url_https):
             # Store the We Vote cached URL
             candidate.we_vote_hosted_profile_wikipedia_image_url_large = \
@@ -2825,131 +2827,7 @@ def find_candidate_endorsements_on_one_candidate_web_page(site_url, endorsement_
                         # Remove the http... from the candidate website
                         organization_website_stripped = extract_website_from_url(organization_website)
                         # Also search for extract_website_from_url
-                        if organization_website_stripped not in \
-                                ('ballotpedia.org',
-                                 'bit.ly',
-                                 'en.wikipedia.org',
-                                 'facebook.com',
-                                 'instagram.com',
-                                 'linkedin.com',
-                                 'nationbuilder.com',
-                                 'secure.actblue.com',
-                                 'secure.winred.com',
-                                 't.co',
-                                 'tinyurl.com',
-                                 'twitter.com',
-                                 'wix.com',
-                                 'wixsite.com',
-                                 'wordpress.com',
-                                 'youtube.com'):
-                            # We strip out straight 'wixsite.com', but not 'candidate.wixsite.com'
-                            if organization_website_stripped in all_html_lower_case:
-                                organization_we_vote_ids_list.append(
-                                    one_ballot_item_dict['organization_we_vote_id'])
-                                endorsement_list_light_modified.append(one_ballot_item_dict)
-                                continue
-
-        except Exception as error_message:
-            status += "SCRAPE_ONE_LINE_ERROR: {error_message}".format(error_message=error_message)
-
-        success = True
-        status += "FINISHED_SCRAPING_PAGE "
-    except timeout:
-        status += "ENDORSEMENTS-WEB_PAGE_SCRAPE_TIMEOUT_ERROR "
-        success = False
-    except IOError as error_instance:
-        # Catch the error message coming back from urllib.request.urlopen and pass it in the status
-        error_message = error_instance
-        status += "SCRAPE_SOCIAL_IO_ERROR: {error_message}".format(error_message=error_message)
-        success = False
-    except Exception as error_instance:
-        error_message = error_instance
-        status += "SCRAPE_GENERAL_EXCEPTION_ERROR: {error_message}".format(error_message=error_message)
-        success = False
-
-    at_least_one_endorsement_found = positive_value_exists(len(organization_we_vote_ids_list)) \
-        or positive_value_exists(len(measure_we_vote_ids_list))
-    results = {
-        'status':                           status,
-        'success':                          success,
-        'at_least_one_endorsement_found':   at_least_one_endorsement_found,
-        'page_redirected':                  False,
-        'endorsement_list_light':           endorsement_list_light_modified,
-    }
-    return results
-
-
-def find_candidate_endorsements_on_one_candidate_web_page(site_url, endorsement_list_light):
-    organization_we_vote_ids_list = []
-    endorsement_list_light_modified = []
-    measure_we_vote_ids_list = []
-    status = ""
-    success = False
-    if len(site_url) < 10:
-        status += 'FIND_ENDORSEMENTS_ON_CANDIDATE_PAGE-PROPER_URL_NOT_PROVIDED: ' + site_url
-        results = {
-            'status':                           status,
-            'success':                          success,
-            'at_least_one_endorsement_found':   False,
-            'page_redirected':                  False,
-            'endorsement_list_light':           endorsement_list_light_modified,
-        }
-        return results
-
-    try:
-        request = urllib.request.Request(site_url, None, staticUserAgent())
-        page = urllib.request.urlopen(request, timeout=5)
-        all_html_raw = page.read()
-        all_html = all_html_raw.decode("utf8")
-        page.close()
-        try:
-            all_html_lower_case = all_html.lower()
-            for one_ballot_item_dict in endorsement_list_light:
-                # Add empty candidate_we_vote_id
-                one_ballot_item_dict['candidate_we_vote_id'] = ""
-                if positive_value_exists(one_ballot_item_dict['organization_we_vote_id']) \
-                        and one_ballot_item_dict['organization_we_vote_id'] \
-                        not in organization_we_vote_ids_list:
-                    if positive_value_exists(one_ballot_item_dict['organization_name']):
-                        if one_ballot_item_dict['organization_name'].lower() in all_html_lower_case:
-                            organization_we_vote_ids_list.append(one_ballot_item_dict['organization_we_vote_id'])
-                            endorsement_list_light_modified.append(one_ballot_item_dict)
-                            continue
-                        elif 'alternate_names' in one_ballot_item_dict:
-                            alternate_name_found = False
-                            alternate_names = one_ballot_item_dict['alternate_names']
-                            for organization_name_alternate in alternate_names:
-                                if organization_name_alternate.lower() in all_html_lower_case:
-                                    organization_we_vote_ids_list.append(
-                                        one_ballot_item_dict['organization_we_vote_id'])
-                                    endorsement_list_light_modified.append(one_ballot_item_dict)
-                                    alternate_name_found = True
-                                    break
-                            if alternate_name_found:
-                                continue
-                    if 'organization_website' in one_ballot_item_dict and \
-                            positive_value_exists(one_ballot_item_dict['organization_website']):
-                        organization_website = one_ballot_item_dict['organization_website'].lower()
-                        # Remove the http... from the candidate website
-                        organization_website_stripped = extract_website_from_url(organization_website)
-                        if organization_website_stripped not in \
-                                ('ballotpedia.org',
-                                 'bit.ly',
-                                 'en.wikipedia.org',
-                                 'facebook.com',
-                                 'instagram.com',
-                                 'linkedin.com',
-                                 'nationbuilder.com',
-                                 'secure.actblue.com',
-                                 'secure.winred.com',
-                                 't.co',
-                                 'tinyurl.com',
-                                 'twitter.com',
-                                 'wix.com',
-                                 'wixsite.com',
-                                 'wordpress.com',
-                                 'youtube.com'):
-                            # We strip out straight 'wixsite.com', but not 'candidate.wixsite.com'
+                        if organization_website_stripped not in ORGANIZATION_WEBSITES_TO_EXCLUDE_FROM_SCRAPER:
                             if organization_website_stripped in all_html_lower_case:
                                 organization_we_vote_ids_list.append(
                                     one_ballot_item_dict['organization_we_vote_id'])
@@ -3100,24 +2978,7 @@ def organization_endorsements_scanner(endorsement_list_light, text_to_search_low
                     ballot_item_website = one_ballot_item_dict['ballot_item_website'].lower()
                     # Remove the http... from the candidate website
                     ballot_item_website_stripped = extract_website_from_url(ballot_item_website)
-                    if ballot_item_website_stripped not in \
-                            ('ballotpedia.org',
-                             'bit.ly',
-                             'en.wikipedia.org',
-                             'facebook.com',
-                             'instagram.com',
-                             'linkedin.com',
-                             'nationbuilder.com',
-                             'secure.actblue.com',
-                             'secure.winred.com',
-                             't.co',
-                             'tinyurl.com',
-                             'twitter.com',
-                             'wix.com',
-                             'wixsite.com',
-                             'wordpress.com',
-                             'youtube.com'):
-                        # We strip out straight 'wixsite.com', but not 'candidate.wixsite.com'
+                    if ballot_item_website_stripped not in ORGANIZATION_WEBSITES_TO_EXCLUDE_FROM_SCRAPER:
                         if ballot_item_website_stripped in text_to_search_lower_case:
                             candidate_we_vote_ids_list.append(one_ballot_item_dict['candidate_we_vote_id'])
                             endorsement_list_light_modified.append(one_ballot_item_dict)
