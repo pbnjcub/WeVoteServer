@@ -46,7 +46,7 @@ th, td {
     <a href="{% url 'candidate:candidate_list' %}?google_civic_election_id={{ google_civic_election_id }}&state_code={{ state_code }}">
       cancel</a>
 {% endif %}
-<input name="submit_text" type="submit" value="{% if candidate %}Update Candidate{% else %}Save New Candidate{% endif %}" /></p>
+<input name="submit_text" type="submit" value="{% if candidate %}Update Candidate{% else %}Save New Candidate{% endif %}" class="btn-primary" /></p>
 
 <div class="row form-group" style="height: 60px;">
     <label for="candidate_name_id" class="pl-4 control-label">
@@ -675,20 +675,8 @@ th, td {
     </div>
 </div>
 </div>
+</div>
 
-<div class="col">
-<div class="row form-group">
-    <label for="wikipedia_url_id" class="control-label">
-        Wikipedia URL
-        {% if candidate and candidate.wikipedia_url %}(<a href="{{ candidate.wikipedia_url }}" target="_blank">Go</a>){% endif %}
-    </label>
-    <div class="col">
-        <input type="text" name="wikipedia_url" id="wikipedia_url_id" class="form-control"
-               value="{% if candidate %}{{ candidate.wikipedia_url|default_if_none:"" }}{% else %}{{ wikipedia_url|default_if_none:"" }}{% endif %}" />
-    </div>
-</div>
-</div>
-</div>
 
 <div class="row form-group">
     <label for="ballotpedia_candidate_summary_id" class="pl-4 control-label">Ballotpedia Candidate Summary</label>
@@ -708,6 +696,26 @@ th, td {
                   id="ballot_guide_official_statement_id"
                   placeholder="Enter official candidate statement">{% if candidate %}{{ candidate.ballot_guide_official_statement|default_if_none:"" }}{% else %}{{ ballot_guide_official_statement|default_if_none:"" }}{% endif %}</textarea>
     </div>
+</div>
+
+<div class="row">
+<div class="col">
+<div class="row form-group">
+    <label for="wikipedia_url_id" class="pl-4 control-label">
+        Wikipedia URL
+        {% if candidate and candidate.wikipedia_url %}(<a href="{{ candidate.wikipedia_url }}" target="_blank">Go</a>){% endif %}
+    </label>
+    <div class="col">
+        <input type="text" name="wikipedia_url" id="wikipedia_url_id" class="form-control"
+               value="{% if candidate %}{{ candidate.wikipedia_url|default_if_none:"" }}{% else %}{{ wikipedia_url|default_if_none:"" }}{% endif %}" />
+    </div>
+    <div class="col">
+        <input type="text" name="wikipedia_photo_url" id="wikipedia_photo_url_id" class="form-control"
+               value="{% if candidate %}{{ candidate.wikipedia_photo_url|default_if_none:"" }}{% else %}{{ wikipedia_photo_url|default_if_none:"" }}{% endif %}" />
+        {% if candidate.wikipedia_photo_does_not_exist %}Image is Missing{% endif %}
+    </div>
+</div>
+</div>
 </div>
 
 {% include "../form_inputs/four_form_groups.html" with field_dict_1=ballotpedia_race_id_dict field_dict_2=ballotpedia_office_id_dict field_dict_3=ballotpedia_candidate_id_dict field_dict_4=ballotpedia_person_id_dict %}
@@ -771,7 +779,7 @@ th, td {
     <a href="{% url 'candidate:candidate_list' %}?google_civic_election_id={{ google_civic_election_id }}&state_code={{ state_code }}">
       cancel</a>
 {% endif %}
-<input name="submit_text" type="submit" value="{% if candidate %}Update Candidate{% else %}Save New Candidate{% endif %}" /></p>
+<input name="submit_text" type="submit" value="{% if candidate %}Update Candidate{% else %}Save New Candidate{% endif %}" class="btn-primary" /></p>
 </form>
 {% if change_log_list %}
     <br />
@@ -779,8 +787,51 @@ th, td {
     {% include "candidate/change_log_list.html" with change_log_list=change_log_list %}
 </div>
 {% endif %}
-
 <br />
+    
+    
+{% if related_candidate_list %}
+    <h3>Possible Duplicate Candidates for {{ candidate.candidate_name }}</h3>
+    <table class="table">
+    <thead>
+        <tr>
+            <th>&nbsp;</th>
+            <th>We Vote ID</th>
+            <th>Candidate Name</th>
+            <th>Year</th>
+            <th>State</th>
+            <th>Other IDs</th>
+        </tr>
+    </thead>
+    {% for found_candidate in related_candidate_list %}
+        <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>
+                {{ found_candidate.we_vote_id }}
+                <a href="{% url 'candidate:candidate_edit' found_candidate.id %}?google_civic_election_id={{ google_civic_election_id }}&state_code={{ state_code }}" target="_blank">edit&nbsp;<span class="glyphicon glyphicon-new-window"></span></a>
+            </td>
+            <td>
+              {% if found_candidate.candidates_match_root_candidate %}
+                <strong>{{ found_candidate.candidate_name }}</strong>
+              {% else %}
+                {{ found_candidate.candidate_name }}
+              {% endif %}
+              <br />
+              (<a href="{% url 'candidate:compare_two_candidates_for_merge' %}?candidate1_we_vote_id={{ candidate.we_vote_id }}&candidate2_we_vote_id={{ found_candidate.we_vote_id }}&google_civic_election_id={{ google_civic_election_id }}&state_code={{ state_code }}" target="_blank" class="u-no-break">compare for merge&nbsp;<span class="glyphicon glyphicon-new-window"></span></a>)
+            </td>
+            <td>{{ found_candidate.candidate_year }}</td>
+            <td>{{ found_candidate.state_code }}</td>
+            <td>
+                {% if found_candidate.candidate_twitter_handle %}Twitter: {{ found_candidate.candidate_twitter_handle|default_if_none:"" }} &nbsp;&nbsp;{% endif %}
+                {% if found_candidate.ballotpedia_race_id %}BP Race: {{ found_candidate.ballotpedia_race_id|default_if_none:"" }} &nbsp;&nbsp;{% endif %}
+                {% if found_candidate.ballotpedia_candidate_id %}BP Cand: {{ found_candidate.ballotpedia_candidate_id|default_if_none:"" }} &nbsp;&nbsp;{% endif %}
+            </td>
+        </tr>
+    {% endfor %}
+    </table>
+{% endif %}
+<br/>
+
 {% if candidate %}
 <a href="{% url 'candidate:candidate_retrieve_photos' candidate.id %}">Retrieve photos (from Twitter, Vote Smart - TODO work in progress)</a>, <a href="{% url 'image:images_for_one_candidate' candidate.we_vote_id %}" target="_blank">See images (in new window)</a>,
     <a href="{% url 'import_export_twitter:delete_images_view'%}?candidate_id={{ candidate.id }}">Delete Cached Images</a><br />

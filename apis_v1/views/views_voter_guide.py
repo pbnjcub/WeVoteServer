@@ -20,7 +20,7 @@ from voter_guide.controllers import voter_guide_possibility_highlights_retrieve_
     voter_guides_to_follow_retrieve_for_api, voter_guides_upcoming_retrieve_for_api
 import wevote_functions.admin
 from wevote_functions.functions import convert_to_int, get_maximum_number_to_retrieve_from_request, \
-    get_voter_device_id, positive_value_exists
+    get_voter_device_id, positive_value_exists, return_value_from_request
 
 logger = wevote_functions.admin.get_logger(__name__)
 
@@ -42,31 +42,36 @@ def voter_guide_possibility_retrieve_view(request):  # voterGuidePossibilityRetr
                                                     limit_to_this_year=limit_to_this_year)
 
 
+@csrf_exempt
 def voter_guide_possibility_position_save_view(request):  # voterGuidePossibilityPositionSave
     """
     Update one possible position from one organization on one page.
     :param request:
     :return:
     """
+    status = ''
     voter_device_id = get_voter_device_id(request)  # We standardize how we take in the voter_device_id
-    voter_guide_possibility_id = request.GET.get('voter_guide_possibility_id', 0)
-    voter_guide_possibility_position_id = request.GET.get('voter_guide_possibility_position_id', 0)
-    ballot_item_name = request.GET.get('ballot_item_name', None)
-    ballot_item_state_code = request.GET.get('ballot_item_state_code', None)
-    candidate_twitter_handle = request.GET.get('candidate_twitter_handle', None)
-    candidate_we_vote_id = request.GET.get('candidate_we_vote_id', None)
-    measure_we_vote_id = request.GET.get('measure_we_vote_id', None)
-    more_info_url = request.GET.get('more_info_url', None)
-    organization_name = request.GET.get('organization_name', None)
-    organization_twitter_handle = request.GET.get('organization_twitter_handle', None)
-    organization_we_vote_id = request.GET.get('organization_we_vote_id', None)
-    position_should_be_removed = request.GET.get('position_should_be_removed', None)
-    position_stance = request.GET.get('position_stance', None)
-    possibility_should_be_deleted = request.GET.get('possibility_should_be_deleted', None)
-    possibility_should_be_ignored = request.GET.get('possibility_should_be_ignored', None)
-    statement_text = request.GET.get('statement_text', None)
+    is_post = True if request.method == 'POST' else False
 
-    google_civic_election_id_list = request.GET.getlist('google_civic_election_id_list[]')
+    voter_guide_possibility_id = return_value_from_request(request, 'voter_guide_possibility_id', is_post, 0)
+    voter_guide_possibility_position_id = return_value_from_request(request, 'voter_guide_possibility_position_id', is_post, 0)
+    ballot_item_name = return_value_from_request(request, 'ballot_item_name', is_post, None)
+    ballot_item_state_code = return_value_from_request(request, 'ballot_item_state_code', is_post, None)
+    candidate_twitter_handle = return_value_from_request(request, 'candidate_twitter_handle', is_post, None)
+    candidate_we_vote_id = return_value_from_request(request, 'candidate_we_vote_id', is_post, None)
+    measure_we_vote_id = return_value_from_request(request, 'measure_we_vote_id', is_post, None)
+    more_info_url = return_value_from_request(request, 'more_info_url', is_post, None)
+    organization_name = return_value_from_request(request, 'organization_name', is_post, None)
+    organization_twitter_handle = return_value_from_request(request, 'organization_twitter_handle', is_post, None)
+    organization_we_vote_id = return_value_from_request(request, 'organization_we_vote_id', is_post, None)
+    position_should_be_removed = return_value_from_request(request, 'position_should_be_removed', is_post, None)
+    position_stance = return_value_from_request(request, 'position_stance', is_post, None)
+    possibility_should_be_deleted = return_value_from_request(request, 'possibility_should_be_deleted', is_post, None)
+    possibility_should_be_ignored = return_value_from_request(request, 'possibility_should_be_ignored', is_post, None)
+    statement_text = return_value_from_request(request, 'statement_text', is_post, None)
+
+    google_civic_election_id_list = return_value_from_request(request, 'google_civic_election_id_list[]', is_post, None)
+
     try:
         if positive_value_exists(google_civic_election_id_list):
             if not positive_value_exists(len(google_civic_election_id_list)):
@@ -76,25 +81,69 @@ def voter_guide_possibility_position_save_view(request):  # voterGuidePossibilit
     except:
         google_civic_election_id_list = None
 
-    json_data = voter_guide_possibility_position_save_for_api(
-        voter_device_id=voter_device_id,
-        voter_guide_possibility_id=voter_guide_possibility_id,
-        voter_guide_possibility_position_id=voter_guide_possibility_position_id,
-        ballot_item_name=ballot_item_name,
-        ballot_item_state_code=ballot_item_state_code,
-        position_stance=position_stance,
-        statement_text=statement_text,
-        more_info_url=more_info_url,
-        possibility_should_be_deleted=possibility_should_be_deleted,
-        possibility_should_be_ignored=possibility_should_be_ignored,
-        candidate_twitter_handle=candidate_twitter_handle,
-        candidate_we_vote_id=candidate_we_vote_id,
-        measure_we_vote_id=measure_we_vote_id,
-        organization_name=organization_name,
-        organization_twitter_handle=organization_twitter_handle,
-        organization_we_vote_id=organization_we_vote_id,
-        position_should_be_removed=position_should_be_removed,
-        google_civic_election_id_list=google_civic_election_id_list)
+    try:
+        json_data = voter_guide_possibility_position_save_for_api(
+            voter_device_id=voter_device_id,
+            voter_guide_possibility_id=voter_guide_possibility_id,
+            voter_guide_possibility_position_id=voter_guide_possibility_position_id,
+            ballot_item_name=ballot_item_name,
+            ballot_item_state_code=ballot_item_state_code,
+            position_stance=position_stance,
+            statement_text=statement_text,
+            more_info_url=more_info_url,
+            possibility_should_be_deleted=possibility_should_be_deleted,
+            possibility_should_be_ignored=possibility_should_be_ignored,
+            candidate_twitter_handle=candidate_twitter_handle,
+            candidate_we_vote_id=candidate_we_vote_id,
+            measure_we_vote_id=measure_we_vote_id,
+            organization_name=organization_name,
+            organization_twitter_handle=organization_twitter_handle,
+            organization_we_vote_id=organization_we_vote_id,
+            position_should_be_removed=position_should_be_removed,
+            google_civic_election_id_list=google_civic_election_id_list)
+    except Exception as e:
+        status += "VOTER_GUIDE_POSSIBILITY_POSITION_SAVE_FAILED1: " + str(e) + " "
+        json_data = {
+            'status': status,
+            'success': False,
+        }
+    try:
+        json_dumped = json.dumps(json_data)
+    except Exception as e:
+        status += "VOTER_GUIDE_POSSIBILITY_POSITION_SAVE_FAILED2: " + str(e) + " "
+        json_data = {
+            'status': status,
+            'success': False,
+        }
+    # Dale 2024-06-08 There is a weird bug happening with the following response that is independent of
+    #  the contents of the JSON when we save with POST.
+    #  Some sources on the web think it is related to a bug/change introduced in python 3.11.3+
+    # Traceback (most recent call last):
+    #   File "/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/wsgiref/handlers.py", line 138, in run
+    #     self.finish_response()
+    #   File "/Users/dalemcgrew/PycharmEnvironments/WeVoteServer3.11/lib/python3.11/site-packages/django/core/servers/basehttp.py", line 173, in finish_response
+    #     super().finish_response()
+    #   File "/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/wsgiref/handlers.py", line 184, in finish_response
+    #     self.write(data)
+    #   File "/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/wsgiref/handlers.py", line 287, in write
+    #     self.send_headers()
+    #   File "/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/wsgiref/handlers.py", line 345, in send_headers
+    #     self.send_preamble()
+    #   File "/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/wsgiref/handlers.py", line 267, in send_preamble
+    #     self._write(
+    #   File "/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/wsgiref/handlers.py", line 466, in _write
+    #     result = self.stdout.write(data)
+    #              ^^^^^^^^^^^^^^^^^^^^^^^
+    #   File "/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/socketserver.py", line 834, in write
+    #     self._sock.sendall(b)
+    #   File "/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/ssl.py", line 1273, in sendall
+    #     v = self.send(byte_view[count:])
+    #         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    #   File "/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/ssl.py", line 1242, in send
+    #     return self._sslobj.write(data)
+    #            ^^^^^^^^^^^^^^^^^^^^^^^^
+    # ssl.SSLEOFError: EOF occurred in violation of protocol (_ssl.c:2427)
+
     return HttpResponse(json.dumps(json_data), content_type='application/json')
 
 

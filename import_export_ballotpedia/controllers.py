@@ -10,7 +10,8 @@ from django.contrib import messages
 from .models import BallotpediaApiCounterManager
 from ballot.models import BallotItemListManager, BallotItemManager, BallotReturned, BallotReturnedManager, \
     VoterBallotSavedManager
-from candidate.controllers import save_image_to_candidate_table
+from candidate.controllers import save_image_to_candidate_table, add_twitter_handle_to_next_candidate_spot, \
+    add_to_candidate_new_links_from_ballotpedia
 from candidate.models import CandidateManager, CandidateListManager, fetch_candidate_count_for_office, \
     PROFILE_IMAGE_TYPE_BALLOTPEDIA, PROFILE_IMAGE_TYPE_UNKNOWN
 from config.base import get_environment_variable
@@ -29,7 +30,7 @@ from voter.models import fetch_voter_id_from_voter_device_link, VoterAddressMana
 import wevote_functions.admin
 from wevote_functions.functions import convert_to_int, extract_state_code_from_address_string, positive_value_exists
 from wevote_settings.models import RemoteRequestHistory, RemoteRequestHistoryManager, \
-    RETRIEVE_POSSIBLE_BALLOTPEDIA_PHOTOS
+    RETRIEVE_POSSIBLE_BALLOTPEDIA_PHOTOS, RETRIEVE_POSSIBLE_BALLOTPEDIA_CANDIDATES_LINKS
 
 BALLOTPEDIA_API_KEY = get_environment_variable("BALLOTPEDIA_API_KEY")
 BALLOTPEDIA_API_CANDIDATES_URL = get_environment_variable("BALLOTPEDIA_API_CANDIDATES_URL")
@@ -550,6 +551,7 @@ def get_photo_url_from_ballotpedia(
     success = True
     ballotpedia_photo_saved = False
     is_candidate = False
+    is_organization = False
     is_politician = False
     if remote_request_history_manager is None:
         remote_request_history_manager = RemoteRequestHistoryManager()
@@ -565,7 +567,7 @@ def get_photo_url_from_ballotpedia(
     else:
         ballotpedia_page_url = incoming_object.organization_ballotpedia
         google_civic_election_id = ''
-        is_candidate = False
+        is_organization = True
 
     if not positive_value_exists(ballotpedia_page_url):
         status += "MISSING_BALLOTPEDIA_PAGE_URL "
@@ -580,7 +582,7 @@ def get_photo_url_from_ballotpedia(
         ballotpedia_page_url = 'https://' + ballotpedia_page_url
         incoming_object.ballotpedia_page_url = ballotpedia_page_url
         incoming_object_changes = True
-    print(ballotpedia_page_url)
+    # print(ballotpedia_page_url)
     results = get_ballotpedia_photo_url_from_ballotpedia_candidate_url_page(ballotpedia_page_url)
     if results.get('success'):
         photo_url = results.get('photo_url')
@@ -675,9 +677,8 @@ def get_photo_url_from_ballotpedia(
 
         if ballotpedia_photo_saved:
             status += "SAVED_BALLOTPEDIA_IMAGE "
-            # Create a record denoting that we have retrieved from Ballotpedia for this candidate
-
             if is_candidate:
+                # Create a record denoting that we have retrieved from Ballotpedia for this candidate
                 save_results_history = remote_request_history_manager.create_remote_request_history_entry(
                     kind_of_action=RETRIEVE_POSSIBLE_BALLOTPEDIA_PHOTOS,
                     google_civic_election_id=google_civic_election_id,
@@ -707,6 +708,139 @@ def get_photo_url_from_ballotpedia(
         'status': status,
     }
     return results
+
+
+def get_candidate_links_from_ballotpedia_candidate_url_page(ballotpedia_candidate_url):
+    candidate_links_dict = {}
+    candidate_links_found = False
+    candidate_links_list = []
+    candidate_name = ""
+    status = ""
+    success = True
+
+    try:
+        soup = get_parsed_html(ballotpedia_candidate_url)
+        candidate_name = ballotpedia_candidate_url.split(".org/")[-1].replace("_", " ")
+
+        count = 1
+        for candidate_links in soup.find_all('div', class_='widget-row value-only white'):
+            p_tag = candidate_links.find('p')
+            link_name = p_tag.text.strip()
+            candidate_link = p_tag.find('a').get('href')
+            if positive_value_exists(candidate_link):
+                candidate_links_list.append(candidate_link)
+                if not positive_value_exists(link_name):
+                    link_name = "unknown" + str(count)
+                    count += 1
+                candidate_links_dict[link_name] = candidate_link
+        candidate_links_found = len(candidate_links_list) > 0
+    except Exception as e:
+        status += "ERROR_TRYING_TO_GET_BALLOTPEDIA_CANDIDATE_LINK, " + ballotpedia_candidate_url + ": " + str(e) + " "
+        success = False
+
+    results = {
+        'candidate_links_dict': candidate_links_dict,
+        'candidate_links_found': candidate_links_found,
+        'candidate_links_list': candidate_links_list,
+        'candidate_name': candidate_name,
+        'status': status,
+        'success': success,
+    }
+    return results
+
+
+def get_candidate_links_from_ballotpedia(
+        incoming_object=None,
+        request={},
+        remote_request_history_manager=None,
+        save_to_database=False,
+        add_messages=False):
+    status = ""
+    success = True
+    is_candidate = False
+    is_organization = False
+    is_politician = False
+    if remote_request_history_manager is None:
+        remote_request_history_manager = RemoteRequestHistoryManager()
+
+    if hasattr(incoming_object, 'ballotpedia_candidate_url'):
+        ballotpedia_page_url = incoming_object.ballotpedia_candidate_url
+        google_civic_election_id = incoming_object.google_civic_election_id
+        is_candidate = True
+    elif hasattr(incoming_object, 'ballotpedia_politician_url'):
+        ballotpedia_page_url = incoming_object.ballotpedia_politician_url
+        google_civic_election_id = ''
+        is_politician = True
+    else:
+        ballotpedia_page_url = incoming_object.organization_ballotpedia
+        google_civic_election_id = ''
+        is_organization = True
+
+    if not positive_value_exists(ballotpedia_page_url):
+        status += "MISSING_BALLOTPEDIA_PAGE_URL "
+        results = {
+            'success': success,
+            'status': status,
+        }
+        return results
+
+    incoming_object_changes = False
+    if positive_value_exists(ballotpedia_page_url) and not ballotpedia_page_url.startswith('http'):
+        ballotpedia_page_url = 'https://' + ballotpedia_page_url
+        incoming_object.ballotpedia_page_url = ballotpedia_page_url
+        incoming_object_changes = True
+    print(ballotpedia_page_url)
+    results = get_candidate_links_from_ballotpedia_candidate_url_page(ballotpedia_page_url)
+    if results.get('success'):
+        # In all situations, we want to mark this incoming_object as having been processed
+        incoming_object.ballotpedia_candidate_links_retrieved = True
+        incoming_object_changes = True
+        candidate_links_dict = results.get('candidate_links_dict')
+        if results.get('candidate_links_found'):
+            if is_candidate or is_politician:
+                # print(candidate_links_dict)
+                results = add_to_candidate_new_links_from_ballotpedia(incoming_object, candidate_links_dict)
+                if results['at_least_one_change']:
+                    incoming_object = results['candidate']
+                    # incoming_object_changes = True
+        else:
+            status += "BALLOTPEDIA_CANDIDATE_LINKS_NOT_FOUND: " + ballotpedia_page_url + " "
+            status += results['status']
+
+        if save_to_database and incoming_object_changes:
+            incoming_object.save()
+
+        # Create a record denoting that we have retrieved from Ballotpedia for this candidate
+        if is_candidate:
+            save_results_history = remote_request_history_manager.create_remote_request_history_entry(
+                kind_of_action=RETRIEVE_POSSIBLE_BALLOTPEDIA_CANDIDATES_LINKS,
+                google_civic_election_id=google_civic_election_id,
+                candidate_campaign_we_vote_id=incoming_object.we_vote_id,
+                number_of_results=1,
+                status="CANDIDATE_BALLOTPEDIA_URL_PARSED_HTTP:" + ballotpedia_page_url)
+
+        else:
+            success = False
+            status += results['status']
+            status += "SAVE_BALLOTPEDIA_IMAGE_TO_CANDIDATE_TABLE_FAILED "
+    else:
+        success = False
+        status += "NOT_SUCCESSFUL_get_ballotpedia_candidate_links_ballotpedia_candidate_url_page: "
+        status += results['status']
+
+        if add_messages:
+            if len(results.get('clean_message')) > 0:
+                messages.add_message(request, messages.ERROR, results.get('clean_message'))
+            else:
+                messages.add_message(
+                    request, messages.ERROR, 'Ballotpedia links NOT retrieved (2). status: ' + results.get('status'))
+
+    results = {
+        'success': success,
+        'status': status,
+    }
+    return results
+
 
 def retrieve_ballotpedia_candidates_by_district_from_api(google_civic_election_id, state_code="",
                                                          only_retrieve_if_zero_candidates=False):
@@ -3699,5 +3833,6 @@ def store_one_ballot_from_ballotpedia_api(ballot_item_dict_list, google_civic_el
         'google_civic_election_id': google_civic_election_id,
     }
     return results
+
 
 

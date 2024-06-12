@@ -19,15 +19,16 @@ from wevote_functions.functions import positive_value_exists, convert_to_int, ge
 logger = wevote_functions.admin.get_logger(__name__)
 
 # This api will only return the data from the following tables
-# Creating CampaignX's locally seems to be best testing strategy
-# 'campaign_campaignx',
-# 'campaign_campaignxlistedbyorganization',
-# 'campaign_campaignxnewsitem',
-# 'campaign_campaignx_politician',
-# 'campaign_campaignxseofriendlypath',
 allowable_tables = [
     'ballot_ballotitem',
     'position_positionentered',
+    'campaign_campaignx',
+    'campaign_campaignxowner',
+    'campaign_campaignxpolitician',
+    'campaign_campaignxlistedbyorganization',
+    'campaign_campaignxnewsitem',
+    'campaign_campaignxseofriendlypath',
+    'campaign_campaignxsupporter',
     'candidate_candidatesarenotduplicates',
     'candidate_candidatetoofficelink',
     'election_ballotpediaelection',

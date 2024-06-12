@@ -36,6 +36,7 @@ from import_export_batches.models import BatchManager
 from import_export_twitter.controllers import refresh_twitter_candidate_details
 from import_export_vote_smart.models import VoteSmartRatingOneCandidate
 from import_export_vote_smart.votesmart_local import VotesmartApiError
+from import_export_wikipedia.controllers import get_photo_url_from_wikipedia
 from measure.models import ContestMeasure
 from office.controllers import office_create_from_office_held
 from office.models import ContestOffice, ContestOfficeManager
@@ -1041,6 +1042,9 @@ def candidate_list_view(request):
                 new_filter = Q(we_vote_id__iexact=one_word)
                 filters.append(new_filter)
 
+                new_filter = Q(wikipedia_url__icontains=one_word)
+                filters.append(new_filter)
+
                 # Add the first query
                 if len(filters):
                     final_filters = filters.pop()
@@ -1168,6 +1172,23 @@ def candidate_list_view(request):
     except Exception as e:
         logger.error("ERROR Finding Ballotpedia Photo URLs: ", e)
 
+    # How many candidates with ballotpedia_candidate_url's have never been checked for links we can use?
+    ballotpedia_urls_to_retrieve_for_links = 0
+    try:
+        count_queryset = CandidateCampaign.objects.using('readonly').all()
+        count_queryset = count_queryset.filter(we_vote_id__in=candidate_we_vote_id_list)
+        count_queryset = count_queryset.exclude(ballotpedia_candidate_links_retrieved=True)
+        # Exclude candidates without ballotpedia_candidate_url
+        count_queryset = count_queryset. \
+            exclude(Q(ballotpedia_candidate_url__isnull=True) | Q(ballotpedia_candidate_url__exact=''))
+        if positive_value_exists(state_code):
+            count_queryset = count_queryset.filter(state_code__iexact=state_code)
+
+        ballotpedia_urls_to_retrieve_for_links = count_queryset.count()
+
+    except Exception as e:
+        logger.error("ERROR Finding Ballotpedia URLs to retrieve links: ", e)
+
     # How many facebook_url's don't have facebook_profile_image_url_https
     # SELECT * FROM public.candidate_candidatecampaign where google_civic_election_id = '1000052' and facebook_url
     #     is not null and facebook_profile_image_url_https is null
@@ -1193,6 +1214,29 @@ def candidate_list_view(request):
         facebook_urls_without_picture_urls = count_queryset.count()
     except Exception as e:
         logger.error("Find facebook URLs without facebook pictures in candidate: ", e)
+
+    # How many candidates with wikipedia_candidate_url's don't have wikipedia_photo_url?
+    wikipedia_urls_without_picture_urls = 0
+    try:
+        count_queryset = CandidateCampaign.objects.using('readonly').all()
+        count_queryset = count_queryset.filter(we_vote_id__in=candidate_we_vote_id_list)
+        count_queryset = count_queryset.exclude(wikipedia_photo_does_not_exist=True)
+        if positive_value_exists(state_code):
+            count_queryset = count_queryset.filter(state_code__iexact=state_code)
+
+        # Exclude candidates without wikipedia_candidate_url
+        count_queryset = count_queryset. \
+            exclude(Q(wikipedia_url__isnull=True) | Q(wikipedia_url__exact=''))
+
+        # Find candidates that don't have a photo (i.e. that are null or '')
+        count_queryset = count_queryset.filter(
+            Q(wikipedia_photo_url__isnull=True) | Q(wikipedia_photo_url__iexact=''))
+
+        wikipedia_urls_without_picture_urls = count_queryset.count()
+
+    except Exception as e:
+        logger.error("ERROR Finding Wikipedia Photo URLs: ", e)
+
 
     status_print_list = ""
     status_print_list += "{candidate_list_count:,} candidates found." \
@@ -1406,6 +1450,7 @@ def candidate_list_view(request):
         web_app_root_url = 'https://quality.WeVote.US'
 
     template_values = {
+        'ballotpedia_urls_to_retrieve_for_links':   ballotpedia_urls_to_retrieve_for_links,
         'ballotpedia_urls_without_picture_urls':    ballotpedia_urls_without_picture_urls,
         'candidate_count_start':                    candidate_count_start,
         'candidate_list':                           candidate_list,
@@ -1442,6 +1487,8 @@ def candidate_list_view(request):
         'total_twitter_handles':                    total_twitter_handles,
         'vote_usa_candidates_for_this_state':       vote_usa_candidates_for_this_state,
         'web_app_root_url':                         web_app_root_url,
+        'wikipedia_urls_without_picture_urls':      wikipedia_urls_without_picture_urls,
+
     }
     return render(request, 'candidate/candidate_list.html', template_values)
 
@@ -1643,10 +1690,14 @@ def candidate_new_search_process_view(request):
     elif match_results['politician_list_found']:
         politician_list = match_results['politician_list']
     else:
-        messages.add_message(request, messages.INFO, 'No politician found. Please make sure you have entered '
-                                                     '1) Candidate Name, '
-                                                     '2) Twitter Handle, or '
-                                                     '3) TBD')
+        name_and_state_found = positive_value_exists(candidate_name) and positive_value_exists(state_code)
+        twitter_and_state_found = positive_value_exists(candidate_twitter_handle) and positive_value_exists(state_code)
+        required_variables_found = name_and_state_found or twitter_and_state_found
+        if not required_variables_found:
+            messages.add_message(request, messages.INFO,
+                                 'No politician found. Please make sure you have entered '
+                                 '1) Candidate Name with State, or '
+                                 '2) Twitter Handle with State')
 
     # Return all existing related candidates. Make sure the candidate we want to create doesn't already exist.
     candidate_list = []
@@ -2012,6 +2063,7 @@ def candidate_new_view(request):
     }
     return render(request, 'candidate/candidate_edit.html', template_values)
 
+
 def update_candidate_wikipedia_image(candidate_on_stage, request, messages):
     print("made it here")
     response = retrieve_images_from_wikipedia(candidate_on_stage.wikipedia_page_title)
@@ -2019,7 +2071,8 @@ def update_candidate_wikipedia_image(candidate_on_stage, request, messages):
         print("made it here!!!!")
         candidate_on_stage.wikipedia_photo_url = response["result"]
         candidate_on_stage.save()
-        messages.add_message(request, messages.INFO, "Retrieved the following from wikipedia: {result}".format(result=response["result"]))
+        messages.add_message(request, messages.INFO,
+                             "Retrieved the following from wikipedia: {result}".format(result=response["result"]))
     else:
         messages.add_message(request, messages.ERROR, response["result"])    
 
@@ -2099,9 +2152,9 @@ def candidate_edit_view(request, candidate_id=0, candidate_we_vote_id=""):
         # This is fine, create new below
         pass
 
-    if not positive_value_exists(candidate_on_stage.wikipedia_photo_url):
-        if positive_value_exists(candidate_on_stage.wikipedia_page_title):
-            update_candidate_wikipedia_image(candidate_on_stage, request, messages)
+    # if not positive_value_exists(candidate_on_stage.wikipedia_photo_url):
+    #     if positive_value_exists(candidate_on_stage.wikipedia_page_title):
+    #         update_candidate_wikipedia_image(candidate_on_stage, request, messages)
                 
     if 'localhost' in WEB_APP_ROOT_URL:
         web_app_root_url = 'https://localhost:3000'
@@ -2212,6 +2265,12 @@ def candidate_edit_view(request, candidate_id=0, candidate_we_vote_id=""):
                 humanized_cleaned = humanized.replace('(', '').replace(')', '')
                 candidate_on_stage.candidate_name_normalized = string.capwords(humanized_cleaned)
 
+        # #########################################
+        # Search for possible duplicates
+        from candidate.controllers import find_possible_duplicate_candidates_to_merge_with_this_candidate
+        related_candidate_list = \
+            find_possible_duplicate_candidates_to_merge_with_this_candidate(candidate=candidate_on_stage)
+
         queryset = CandidateChangeLog.objects.using('readonly').all()
         queryset = queryset.filter(candidate_we_vote_id__iexact=candidate_we_vote_id)
         queryset = queryset.order_by('-log_datetime')
@@ -2280,7 +2339,7 @@ def candidate_edit_view(request, candidate_id=0, candidate_we_vote_id=""):
             'candidate_contact_form_url':       candidate_contact_form_url,
             'change_log_list':                  change_log_list,
             # 'contest_office_we_vote_id':        contest_office_we_vote_id,
-			'contest_office_name_dict':              
+			'contest_office_name_dict':
             {
                 'label':    'Contest Office Name (Cached)',
                 'id':       'contest_office_name_id',
@@ -2342,6 +2401,7 @@ def candidate_edit_view(request, candidate_id=0, candidate_we_vote_id=""):
             'path_count':                       path_count,
             'path_list':                        path_list,
             'rating_list':                      rating_list,
+            'related_candidate_list':           related_candidate_list,
             'state_code':                       state_code,
             'state_code_dict':              
             {
@@ -2578,6 +2638,7 @@ def candidate_edit_process_view(request):
     vote_usa_politician_id = request.POST.get('vote_usa_politician_id', False)
     which_marking = request.POST.get('which_marking')
     wikipedia_url = request.POST.get('wikipedia_url', False)
+    wikipedia_photo_url = request.POST.get('wikipedia_photo_url', False)
     withdrawal_date = request.POST.get('withdrawal_date', False)
     withdrawn_from_election = positive_value_exists(request.POST.get('withdrawn_from_election', False))
     youtube_url = request.POST.get('youtube_url', False)
@@ -3239,6 +3300,7 @@ def candidate_edit_process_view(request):
                 candidate_on_stage.vote_usa_politician_id = vote_usa_politician_id
             if vote_usa_office_id is not False:
                 candidate_on_stage.vote_usa_office_id = vote_usa_office_id
+            wikipedia_url_changed = False
             if wikipedia_url is not False:
                 change_results = change_tracking(
                     existing_value=candidate_on_stage.wikipedia_url,
@@ -3251,10 +3313,26 @@ def candidate_edit_process_view(request):
                 if change_results['change_description_changed']:
                     change_description += change_results['change_description']
                     change_description_changed = True
-                if(candidate_on_stage.wikipedia_url != wikipedia_url):
-                    candidate_on_stage.wikipedia_url = wikipedia_url
-                    candidate_on_stage.wikipedia_page_title = wikipedia_url.rsplit('/', 1)[-1].replace("_", " ")
-                    update_candidate_wikipedia_image(candidate_on_stage, request, messages)
+                    wikipedia_url_changed = True
+                candidate_on_stage.wikipedia_url = wikipedia_url
+                candidate_on_stage.wikipedia_photo_url = wikipedia_photo_url
+                if not positive_value_exists(wikipedia_url):
+                    candidate_on_stage.wikipedia_photo_url = None
+                    candidate_on_stage.wikipedia_photo_does_not_exist = False
+                    candidate_on_stage.we_vote_hosted_profile_wikipedia_image_url_large = None
+                    candidate_on_stage.we_vote_hosted_profile_wikipedia_image_url_medium = None
+                    candidate_on_stage.we_vote_hosted_profile_wikipedia_image_url_tiny = None
+                    if profile_image_type_currently_active == PROFILE_IMAGE_TYPE_WIKIPEDIA:
+                        profile_image_type_currently_active = PROFILE_IMAGE_TYPE_UNKNOWN
+                        candidate_on_stage.profile_image_type_currently_active = PROFILE_IMAGE_TYPE_UNKNOWN
+                        candidate_on_stage.we_vote_hosted_profile_image_url_large = None
+                        candidate_on_stage.we_vote_hosted_profile_image_url_medium = None
+                        candidate_on_stage.we_vote_hosted_profile_image_url_tiny = None
+                        results = organize_object_photo_fields_based_on_image_type_currently_active(
+                            object_with_photo_fields=candidate_on_stage)
+                        if results['success']:
+                            candidate_on_stage = results['object_with_photo_fields']
+
             if youtube_url is not False:
                 candidate_on_stage.youtube_url = youtube_url
             if withdrawal_date is not False:
@@ -3315,6 +3393,14 @@ def candidate_edit_process_view(request):
                 or not positive_value_exists(candidate_on_stage.ballotpedia_photo_url)) \
                     and positive_value_exists(ballotpedia_candidate_url):
                 results = get_photo_url_from_ballotpedia(
+                    incoming_object=candidate_on_stage,
+                    save_to_database=True,
+                )
+
+            if (wikipedia_url_changed or not positive_value_exists(candidate_on_stage.wikipedia_photo_url)) \
+                    and positive_value_exists(wikipedia_url):
+                # update_candidate_wikipedia_image(candidate_on_stage, request, messages)
+                results = get_photo_url_from_wikipedia(
                     incoming_object=candidate_on_stage,
                     save_to_database=True,
                 )
@@ -4468,8 +4554,6 @@ def candidate_summary_view(request, candidate_id):
     state_code = ""
     candidate_on_stage_found = False
 
-    candidate_search = request.GET.get('candidate_search', "")
-
     candidate_on_stage = CandidateCampaign()
     candidate_manager = CandidateManager()
     try:
@@ -4512,76 +4596,6 @@ def candidate_summary_view(request, candidate_id):
             candidate_bookmark_count = 0
         candidate_on_stage.bookmarks_count = candidate_bookmark_count
 
-    candidate_search_results_list = []
-    # candidate_list_manager = CandidateListManager()
-    # results = candidate_list_manager.retrieve_candidate_we_vote_id_list_from_election_list(
-    #     google_civic_election_id_list=google_civic_election_id_list,
-    #     limit_to_this_state_code=state_code)
-    # if not positive_value_exists(results['success']):
-    #     status += results['status']
-    #     success = False
-    # candidate_we_vote_id_list = results['candidate_we_vote_id_list']
-    if positive_value_exists(candidate_search) and positive_value_exists(candidate_we_vote_id):
-        candidate_query = CandidateCampaign.objects.all()
-        # office_visiting_list_we_vote_ids = office_manager.fetch_office_visiting_list_we_vote_ids(
-        #     host_google_civic_election_id_list=[google_civic_election_id])
-        # candidate_query = candidate_query.filter(
-        #     Q(google_civic_election_id=google_civic_election_id) |
-        #     Q(contest_office_we_vote_id__in=office_visiting_list_we_vote_ids))
-        # Don't include the candidate whose page this is
-        candidate_query = candidate_query.exclude(we_vote_id__iexact=candidate_we_vote_id)
-
-        if positive_value_exists(state_code):
-            candidate_query = candidate_query.filter(state_code__iexact=state_code)
-
-        search_words = candidate_search.split()
-        for one_word in search_words:
-            filters = []  # Reset for each search word
-            new_filter = Q(candidate_name__icontains=one_word)
-            filters.append(new_filter)
-
-            new_filter = Q(we_vote_id__iexact=one_word)
-            filters.append(new_filter)
-
-            new_filter = Q(contest_office_we_vote_id__iexact=one_word)
-            filters.append(new_filter)
-
-            new_filter = Q(ballotpedia_candidate_name__icontains=one_word)
-            filters.append(new_filter)
-
-            new_filter = Q(contest_office_name__icontains=one_word)
-            filters.append(new_filter)
-
-            new_filter = Q(google_civic_candidate_name__icontains=one_word)
-            filters.append(new_filter)
-
-            new_filter = Q(google_civic_candidate_name2__icontains=one_word)
-            filters.append(new_filter)
-
-            new_filter = Q(google_civic_candidate_name3__icontains=one_word)
-            filters.append(new_filter)
-
-            new_filter = Q(twitter_name__icontains=one_word)
-            filters.append(new_filter)
-
-            # Add the first query
-            if len(filters):
-                final_filters = filters.pop()
-
-                # ...and "OR" the remaining items in the list
-                for item in filters:
-                    final_filters |= item
-
-                candidate_query = candidate_query.filter(final_filters)
-
-        candidate_search_results_list = list(candidate_query)
-    elif candidate_on_stage_found:
-        ignore_candidate_we_vote_id_list = []
-        ignore_candidate_we_vote_id_list.append(candidate_on_stage.we_vote_id)
-        results = find_duplicate_candidate(candidate_on_stage, ignore_candidate_we_vote_id_list, read_only=True)
-        if results['candidate_merge_possibility_found']:
-            candidate_search_results_list = results['candidate_list']
-
     # Working with We Vote Positions
     try:
         candidate_position_query = PositionEntered.objects.order_by('stance')
@@ -4597,13 +4611,12 @@ def candidate_summary_view(request, candidate_id):
         candidate_position_list = []
 
     template_values = {
-        'messages_on_stage':                messages_on_stage,
         'candidate':                        candidate_on_stage,
-        'candidate_to_office_link_list':    candidate_to_office_link_list,
-        'candidate_search_results_list':    candidate_search_results_list,
-        'google_civic_election_id':         google_civic_election_id,
-        'state_code':                       state_code,
         'candidate_position_list':          candidate_position_list,
+        'candidate_to_office_link_list':    candidate_to_office_link_list,
+        'google_civic_election_id':         google_civic_election_id,
+        'messages_on_stage':                messages_on_stage,
+        'state_code':                       state_code,
     }
     return render(request, 'candidate/candidate_summary.html', template_values)
 

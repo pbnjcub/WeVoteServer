@@ -425,6 +425,7 @@ BATCH_IMPORT_KEYS_ACCEPTED_FOR_ORGANIZATIONS = {
     'organization_twitter_handle': 'organization_twitter_handle',
     'organization_website': 'organization_website',
     'organization_we_vote_id': 'organization_we_vote_id',
+    'organization_wikipedia': 'organization_wikipedia',
     'organization_zip': 'organization_zip',
     'organization_type': 'organization_type',
     'state_served_code': 'state_served_code',
@@ -4654,7 +4655,7 @@ class BatchSet(models.Model):
     batch_process_id = models.PositiveIntegerField(default=0, null=True, blank=True, db_index=True)
     batch_process_ballot_item_chunk_id = models.PositiveIntegerField(default=0, null=True, blank=True, db_index=True)
     batch_process_representatives_chunk_id = models.PositiveIntegerField(default=0, null=True, db_index=True)
-    source_uri = models.URLField(max_length=255, blank=True, null=True, verbose_name='uri where data is coming from')
+    source_uri = models.TextField(null=True, verbose_name='uri where data is coming from')
     import_date = models.DateTimeField(verbose_name="date when batch set was imported", null=True, auto_now=True)
 
 
@@ -4680,7 +4681,7 @@ class BatchDescription(models.Model):
     batch_description_text = models.CharField(max_length=255)
     # Have the batch rows under this description been analyzed?
     batch_description_analyzed = models.BooleanField(default=False, db_index=True)
-    source_uri = models.URLField(max_length=255, blank=True, null=True, verbose_name='uri where data is coming from')
+    source_uri = models.TextField(null=True, verbose_name='uri where data is coming from')
     date_created = models.DateTimeField(verbose_name='date first saved', null=True, auto_now=True)
 
 
@@ -6172,10 +6173,8 @@ class BatchRowActionCandidate(models.Model):
     # State code
     state_code = models.CharField(verbose_name="state this candidate serves", max_length=2, null=True, blank=True)
     # The URL for the candidate's campaign web site.
-    candidate_url = models.URLField(
-        verbose_name='website url of candidate', max_length=255, blank=True, null=True)
-    candidate_contact_form_url = models.URLField(
-        verbose_name='website url of candidate contact form', max_length=255, blank=True, null=True)
+    candidate_url = models.TextField(verbose_name='website url of candidate', null=True)
+    candidate_contact_form_url = models.TextField(verbose_name='website url of candidate contact form', null=True)
     facebook_url = models.URLField(
         verbose_name='facebook url of candidate', max_length=255, blank=True, null=True)
 
@@ -6271,13 +6270,12 @@ class BatchRowActionOrganization(models.Model):
         verbose_name="we vote permanent id", max_length=255, null=True, blank=True)
     organization_name = models.CharField(
         verbose_name="organization name", max_length=255, null=False, blank=False)
-    organization_website = models.URLField(
-        verbose_name='url of the endorsing organization', max_length=255, blank=True, null=True)
+    organization_website = models.TextField(verbose_name='url of the endorsing organization', null=True)
     organization_email = models.EmailField(
         verbose_name='organization contact email address', max_length=255, unique=False, null=True, blank=True)
-    organization_contact_form_url = models.URLField(
-        verbose_name='url of the organization contact form', max_length=255, blank=True, null=True)
+    organization_contact_form_url = models.TextField(verbose_name='url of the organization contact form', null=True)
     organization_contact_name = models.CharField(max_length=255, null=True, unique=False)
+    organization_wikipedia = models.URLField(verbose_name='url of wikipedia page', blank=True, null=True)
     organization_facebook = models.URLField(verbose_name='url of facebook page', blank=True, null=True)
     organization_ballotpedia = models.URLField(verbose_name='url of ballotpedia page', blank=True, null=True)
     organization_image = models.CharField(verbose_name='organization image', max_length=255, null=True, unique=False)
@@ -6504,8 +6502,7 @@ class BatchRowActionPosition(models.Model):
     statement_text = models.TextField(null=True, blank=True, )
     statement_html = models.TextField(null=True, blank=True, )
     # A link to any location with more information about this position
-    more_info_url = models.URLField(
-        blank=True, null=True, max_length=255, verbose_name='url with more info about this position')
+    more_info_url = models.TextField(verbose_name='url with more info about this position', null=True)
 
     # Did this position come from a web scraper?
     from_scraper = models.BooleanField(default=False)
@@ -6573,8 +6570,7 @@ class BatchRowActionBallotItem(models.Model):
     measure_subtitle = models.TextField(verbose_name="google civic referendum subtitle",
                                         null=True, blank=True, default="")
     measure_text = models.TextField(verbose_name="measure text", null=True, blank=True, default="")
-    measure_url = models.URLField(
-        verbose_name='url of measure', max_length=255, blank=True, null=True)
+    measure_url = models.TextField(verbose_name='url of measure', null=True)
     yes_vote_description = models.TextField(verbose_name="what a yes vote means", null=True, blank=True, default=None)
     no_vote_description = models.TextField(verbose_name="what a no vote means", null=True, blank=True, default=None)
 

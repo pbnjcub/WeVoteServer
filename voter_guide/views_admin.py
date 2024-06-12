@@ -705,6 +705,26 @@ def voter_guide_create_process_view(request):
     candidate_twitter_handle = extract_twitter_handle_from_text_string(candidate_twitter_handle)
     organization_twitter_handle = extract_twitter_handle_from_text_string(organization_twitter_handle)
 
+    if not positive_value_exists(voter_guide_possibility_id) and positive_value_exists(voter_guide_possibility_url):
+        # If here, we want to go to the existing VoterGuidePossibility based on the url before scanning the page
+        # Otherwise, we can destroy a lot of work
+        results = voter_guide_possibility_manager.retrieve_voter_guide_possibility_from_url(
+            voter_guide_possibility_url=voter_guide_possibility_url,
+            limit_to_this_year=True)
+        if positive_value_exists(results['voter_guide_possibility_id']):
+            voter_guide_possibility_id = results['voter_guide_possibility_id']
+            return HttpResponseRedirect(reverse('voter_guide:voter_guide_create', args=()) +
+                                        "?voter_guide_possibility_id=" + str(voter_guide_possibility_id))
+        elif not results['success']:
+            messages.add_message(request, messages.ERROR,
+                                 'There was a problem creating this VoterGuidePossibility. '
+                                 'Please report to Dale: '+ str(voter_guide_possibility_url) +
+                                 ' '+ str(results['status']))
+            return HttpResponseRedirect(reverse('voter_guide:voter_guide_create', args=()) +
+                                        "?voter_guide_possibility_url=" + str(voter_guide_possibility_url))
+
+
+
     voter_id = 0
     volunteer_task_manager = VolunteerTaskManager()
     voter_we_vote_id = ""
@@ -806,11 +826,15 @@ def voter_guide_create_process_view(request):
             candidate_name=candidate_name,
             candidate_twitter_handle=candidate_twitter_handle,
             candidate_we_vote_id=candidate_we_vote_id,
+            possible_endorsement_list=possible_endorsement_list,
+            voter_guide_possibility_url=voter_guide_possibility_url,
         )
         candidate_name = results['candidate_name']
-        # organization_twitter_followers_count = results['organization_twitter_followers_count']
-        # organization_twitter_handle = results['organization_twitter_handle']
+        candidate_twitter_handle = results['candidate_twitter_handle']
+        candidate_we_vote_id = results['candidate_we_vote_id']
         possible_endorsement_list = results['possible_endorsement_list']
+        if 'messages_info_to_display' in results:
+            messages.add_message(request, messages.INFO, results['messages_info_to_display'])
 
     # Now save the possibility so far
     if positive_value_exists(voter_guide_possibility_url):
@@ -822,6 +846,7 @@ def voter_guide_create_process_view(request):
         updated_values = {
             'ballot_items_raw':                 ballot_items_raw,
             'candidate_name':                   candidate_name,
+            'candidate_twitter_handle':         candidate_twitter_handle,
             'candidate_we_vote_id':             candidate_we_vote_id,
             'contributor_comments':             contributor_comments,
             'contributor_email':                contributor_email,
@@ -1078,7 +1103,10 @@ def generate_voter_guide_possibility_batch_view(request):
         if positive_value_exists(voter_guide_possibility_id):
             file_name += "" + str(voter_guide_possibility_id)
         results = import_export_batch_manager.create_batch_from_json(
-            file_name, structured_json_list, BATCH_HEADER_MAP_FOR_POSITIONS, POSITION,
+            file_name,
+            structured_json_list,
+            BATCH_HEADER_MAP_FOR_POSITIONS,
+            POSITION,
             google_civic_election_id=google_civic_election_id)
         batch_rows_count = results['number_of_batch_rows']
         batch_header_id = results['batch_header_id']

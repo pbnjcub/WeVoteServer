@@ -20,16 +20,17 @@ from image.controllers import retrieve_all_images_for_one_candidate, cache_maste
 from import_export_vote_smart.controllers import retrieve_and_match_candidate_from_vote_smart, \
     retrieve_candidate_photo_from_vote_smart
 from office.models import ContestOfficeListManager, ContestOfficeManager
+from organization.models import ORGANIZATION_WEBSITES_TO_EXCLUDE_FROM_SCRAPER
 from politician.models import PoliticianManager
 from position.controllers import move_positions_to_another_candidate, update_all_position_details_from_candidate
 from twitter.models import TwitterUserManager
 from wevote_functions.functions import add_period_to_middle_name_initial, add_period_to_name_prefix_and_suffix, \
     convert_to_int, convert_to_political_party_constant, \
-    extract_twitter_handle_from_text_string, extract_website_from_url, \
+    extract_instagram_handle_from_text_string, extract_twitter_handle_from_text_string, extract_website_from_url, \
     positive_value_exists, process_request_from_master, \
     remove_period_from_middle_name_initial, remove_period_from_name_prefix_and_suffix
 from wevote_functions.functions_date import convert_date_to_we_vote_date_string, \
-    convert_we_vote_date_string_to_date_as_integer
+    convert_we_vote_date_string_to_date_as_integer, get_current_year_as_integer
 from wevote_functions.utils import staticUserAgent
 from .models import CandidateListManager, CandidateCampaign, CandidateManager, \
     CANDIDATE_UNIQUE_ATTRIBUTES_TO_BE_CLEARED, CANDIDATE_UNIQUE_IDENTIFIERS, \
@@ -553,6 +554,8 @@ def figure_out_candidate_conflict_values(candidate1, candidate2):
                         candidate_merge_conflict_values[attribute] = 'CANDIDATE2'
                     elif candidate1_attribute_value == candidate2_attribute_value:
                         candidate_merge_conflict_values[attribute] = 'MATCHING'
+                    elif candidate2_attribute_value == 'UNKNOWN':
+                        candidate_merge_conflict_values[attribute] = 'CANDIDATE1'
                     else:
                         candidate_merge_conflict_values[attribute] = 'CONFLICT'
                 elif attribute == "withdrawn_from_election":
@@ -748,6 +751,11 @@ def merge_these_two_candidates(candidate1_we_vote_id, candidate2_we_vote_id, adm
         #     status += "ATTRIBUTE_SAVE_FAILED (" + str(attribute) + ") " + str(e) + " "
 
     # Preserve unique google_civic_candidate_name, _name2, _name3, _name4, and _name5
+    if positive_value_exists(candidate2_on_stage.candidate_name):
+        results = add_name_to_next_spot(
+            candidate1_on_stage, candidate2_on_stage.candidate_name)
+        if results['success'] and results['values_changed']:
+            candidate1_on_stage = results['candidate_or_politician']
     if positive_value_exists(candidate2_on_stage.google_civic_candidate_name):
         results = add_name_to_next_spot(
             candidate1_on_stage, candidate2_on_stage.google_civic_candidate_name)
@@ -2550,7 +2558,7 @@ def retrieve_next_or_most_recent_office_for_candidate(candidate_we_vote_id=''):
     return results
 
 
-def save_image_to_candidate_table(candidate, image_url, source_link, url_is_broken, kind_of_source_website=None):
+def save_image_to_candidate_table(candidate, image_url, source_link, url_is_broken, kind_of_source_website=None, page_title=None):
     status = ''
     success = True
     cache_results = {
@@ -2627,7 +2635,8 @@ def save_image_to_candidate_table(candidate, image_url, source_link, url_is_brok
         cached_wikipedia_profile_image_url_https = cache_results['cached_wikipedia_image_url_https']
         candidate.wikipedia_photo_url = image_url
         candidate.wikipedia_profile_image_url_https = cached_wikipedia_profile_image_url_https
-        candidate.wikipedia_page_title = source_link
+        # candidate.wikipedia_page_title = source_link.rsplit('/', 1)[-1].replace("_", " ")
+        candidate.wikipedia_page_title = page_title
         if positive_value_exists(candidate.wikipedia_profile_image_url_https):
             # Store the We Vote cached URL
             candidate.we_vote_hosted_profile_wikipedia_image_url_large = \
@@ -2771,6 +2780,122 @@ def save_google_search_link_to_candidate_table(candidate, google_search_link):
         pass
 
 
+def add_to_candidate_new_links_from_ballotpedia(candidate, candidate_links_dict):
+    status = ""
+    success = True
+    at_least_one_change = False
+    candidate_url_campaign = ""
+    candidate_url_office_held = ""
+    facebook_url_campaign = ""
+    facebook_url_office_held = ""
+    facebook_url_personal = ""
+    instagram_handle_campaign = ""
+    instagram_handle_office_held = ""
+    # linkedin_url_personal = ""
+    twitter_handle_campaign = ""
+    twitter_handle_office_held = ""
+    youtube_url_campaign = ""
+    youtube_url_office_held = ""
+    if 'Personal LinkedIn' in candidate_links_dict:
+        if not positive_value_exists(candidate.linkedin_url):
+            candidate.linkedin_url = candidate_links_dict['Personal LinkedIn']
+            at_least_one_change = True
+    if 'Official Wikipedia' in candidate_links_dict:
+        if not positive_value_exists(candidate.wikipedia_url):
+            candidate.wikipedia_url = candidate_links_dict['Official Wikipedia']
+            at_least_one_change = True
+    if 'Campaign website' in candidate_links_dict:
+        candidate_url_campaign = candidate_links_dict['Campaign website']
+    if 'Official website' in candidate_links_dict:
+        candidate_url_office_held = candidate_links_dict['Official website']
+    if 'Campaign Facebook' in candidate_links_dict:
+        facebook_url_campaign = candidate_links_dict['Campaign Facebook']
+    if 'Official Facebook' in candidate_links_dict:
+        facebook_url_office_held = candidate_links_dict['Official Facebook']
+    if 'Personal Facebook' in candidate_links_dict:
+        facebook_url_personal = candidate_links_dict['Personal Facebook']
+    if 'Campaign Instagram' in candidate_links_dict:
+        instagram_handle_campaign = \
+            extract_instagram_handle_from_text_string(candidate_links_dict['Campaign Instagram'])
+    if 'Official Instagram' in candidate_links_dict:
+        instagram_handle_office_held = \
+            extract_instagram_handle_from_text_string(candidate_links_dict['Official Instagram'])
+    if 'Campaign Twitter' in candidate_links_dict:
+        twitter_handle_campaign = extract_twitter_handle_from_text_string(candidate_links_dict['Campaign Twitter'])
+    if 'Official Twitter' in candidate_links_dict:
+        twitter_handle_office_held = extract_twitter_handle_from_text_string(candidate_links_dict['Official Twitter'])
+    if 'Campaign YouTube' in candidate_links_dict:
+        youtube_url_campaign = candidate_links_dict['Campaign YouTube']
+    if 'Official YouTube' in candidate_links_dict:
+        youtube_url_office_held = candidate_links_dict['Official YouTube']
+
+    if not positive_value_exists(candidate.candidate_url):
+        candidate, at_least_one_change_local = prefer_first_if_exists(
+            incoming_object=candidate, field_to_change='candidate_url',
+            value1=candidate_url_campaign, value2=candidate_url_office_held)
+        if at_least_one_change_local:
+            at_least_one_change = True
+
+    if not positive_value_exists(candidate.facebook_url):
+        candidate, at_least_one_change_local = prefer_first_if_exists(
+            incoming_object=candidate, field_to_change='facebook_url',
+            value1=facebook_url_campaign, value2=facebook_url_office_held, value3=facebook_url_personal)
+        if at_least_one_change_local:
+            at_least_one_change = True
+
+    if not positive_value_exists(candidate.instagram_handle):
+        candidate, at_least_one_change_local = prefer_first_if_exists(
+            incoming_object=candidate, field_to_change='instagram_handle',
+            value1=instagram_handle_campaign, value2=instagram_handle_office_held)
+        if at_least_one_change_local:
+            at_least_one_change = True
+
+    if not positive_value_exists(candidate.youtube_url):
+        candidate, at_least_one_change_local = prefer_first_if_exists(
+            incoming_object=candidate, field_to_change='youtube_url',
+            value1=youtube_url_campaign, value2=youtube_url_office_held)
+        if at_least_one_change_local:
+            at_least_one_change = True
+
+    if positive_value_exists(twitter_handle_campaign):
+        twitter_results = add_twitter_handle_to_next_candidate_spot(candidate, twitter_handle_campaign)
+        candidate = twitter_results['candidate']
+        if twitter_results['values_changed']:
+            at_least_one_change = True
+
+    if positive_value_exists(twitter_handle_office_held):
+        twitter_results = add_twitter_handle_to_next_candidate_spot(candidate, twitter_handle_office_held)
+        candidate = twitter_results['candidate']
+        if twitter_results['values_changed']:
+            at_least_one_change = True
+
+    results = {
+        'at_least_one_change':  at_least_one_change,
+        'candidate':            candidate,
+        'status':               status,
+        'success':              success,
+    }
+    return results
+
+
+def prefer_first_if_exists(incoming_object=None, field_to_change='', value1='', value2='', value3=''):
+    at_least_one_change = False
+    if incoming_object and hasattr(incoming_object, field_to_change):
+        if positive_value_exists(value1):
+            setattr(incoming_object, field_to_change, value1)
+            at_least_one_change = True
+        elif positive_value_exists(value2):
+            setattr(incoming_object, field_to_change, value2)
+            at_least_one_change = True
+        elif positive_value_exists(value3):
+            setattr(incoming_object, field_to_change, value3)
+            at_least_one_change = True
+        else:
+            pass
+
+    return incoming_object, at_least_one_change
+
+
 def find_candidate_endorsements_on_one_candidate_web_page(site_url, endorsement_list_light):
     organization_we_vote_ids_list = []
     endorsement_list_light_modified = []
@@ -2825,131 +2950,7 @@ def find_candidate_endorsements_on_one_candidate_web_page(site_url, endorsement_
                         # Remove the http... from the candidate website
                         organization_website_stripped = extract_website_from_url(organization_website)
                         # Also search for extract_website_from_url
-                        if organization_website_stripped not in \
-                                ('ballotpedia.org',
-                                 'bit.ly',
-                                 'en.wikipedia.org',
-                                 'facebook.com',
-                                 'instagram.com',
-                                 'linkedin.com',
-                                 'nationbuilder.com',
-                                 'secure.actblue.com',
-                                 'secure.winred.com',
-                                 't.co',
-                                 'tinyurl.com',
-                                 'twitter.com',
-                                 'wix.com',
-                                 'wixsite.com',
-                                 'wordpress.com',
-                                 'youtube.com'):
-                            # We strip out straight 'wixsite.com', but not 'candidate.wixsite.com'
-                            if organization_website_stripped in all_html_lower_case:
-                                organization_we_vote_ids_list.append(
-                                    one_ballot_item_dict['organization_we_vote_id'])
-                                endorsement_list_light_modified.append(one_ballot_item_dict)
-                                continue
-
-        except Exception as error_message:
-            status += "SCRAPE_ONE_LINE_ERROR: {error_message}".format(error_message=error_message)
-
-        success = True
-        status += "FINISHED_SCRAPING_PAGE "
-    except timeout:
-        status += "ENDORSEMENTS-WEB_PAGE_SCRAPE_TIMEOUT_ERROR "
-        success = False
-    except IOError as error_instance:
-        # Catch the error message coming back from urllib.request.urlopen and pass it in the status
-        error_message = error_instance
-        status += "SCRAPE_SOCIAL_IO_ERROR: {error_message}".format(error_message=error_message)
-        success = False
-    except Exception as error_instance:
-        error_message = error_instance
-        status += "SCRAPE_GENERAL_EXCEPTION_ERROR: {error_message}".format(error_message=error_message)
-        success = False
-
-    at_least_one_endorsement_found = positive_value_exists(len(organization_we_vote_ids_list)) \
-        or positive_value_exists(len(measure_we_vote_ids_list))
-    results = {
-        'status':                           status,
-        'success':                          success,
-        'at_least_one_endorsement_found':   at_least_one_endorsement_found,
-        'page_redirected':                  False,
-        'endorsement_list_light':           endorsement_list_light_modified,
-    }
-    return results
-
-
-def find_candidate_endorsements_on_one_candidate_web_page(site_url, endorsement_list_light):
-    organization_we_vote_ids_list = []
-    endorsement_list_light_modified = []
-    measure_we_vote_ids_list = []
-    status = ""
-    success = False
-    if len(site_url) < 10:
-        status += 'FIND_ENDORSEMENTS_ON_CANDIDATE_PAGE-PROPER_URL_NOT_PROVIDED: ' + site_url
-        results = {
-            'status':                           status,
-            'success':                          success,
-            'at_least_one_endorsement_found':   False,
-            'page_redirected':                  False,
-            'endorsement_list_light':           endorsement_list_light_modified,
-        }
-        return results
-
-    try:
-        request = urllib.request.Request(site_url, None, staticUserAgent())
-        page = urllib.request.urlopen(request, timeout=5)
-        all_html_raw = page.read()
-        all_html = all_html_raw.decode("utf8")
-        page.close()
-        try:
-            all_html_lower_case = all_html.lower()
-            for one_ballot_item_dict in endorsement_list_light:
-                # Add empty candidate_we_vote_id
-                one_ballot_item_dict['candidate_we_vote_id'] = ""
-                if positive_value_exists(one_ballot_item_dict['organization_we_vote_id']) \
-                        and one_ballot_item_dict['organization_we_vote_id'] \
-                        not in organization_we_vote_ids_list:
-                    if positive_value_exists(one_ballot_item_dict['organization_name']):
-                        if one_ballot_item_dict['organization_name'].lower() in all_html_lower_case:
-                            organization_we_vote_ids_list.append(one_ballot_item_dict['organization_we_vote_id'])
-                            endorsement_list_light_modified.append(one_ballot_item_dict)
-                            continue
-                        elif 'alternate_names' in one_ballot_item_dict:
-                            alternate_name_found = False
-                            alternate_names = one_ballot_item_dict['alternate_names']
-                            for organization_name_alternate in alternate_names:
-                                if organization_name_alternate.lower() in all_html_lower_case:
-                                    organization_we_vote_ids_list.append(
-                                        one_ballot_item_dict['organization_we_vote_id'])
-                                    endorsement_list_light_modified.append(one_ballot_item_dict)
-                                    alternate_name_found = True
-                                    break
-                            if alternate_name_found:
-                                continue
-                    if 'organization_website' in one_ballot_item_dict and \
-                            positive_value_exists(one_ballot_item_dict['organization_website']):
-                        organization_website = one_ballot_item_dict['organization_website'].lower()
-                        # Remove the http... from the candidate website
-                        organization_website_stripped = extract_website_from_url(organization_website)
-                        if organization_website_stripped not in \
-                                ('ballotpedia.org',
-                                 'bit.ly',
-                                 'en.wikipedia.org',
-                                 'facebook.com',
-                                 'instagram.com',
-                                 'linkedin.com',
-                                 'nationbuilder.com',
-                                 'secure.actblue.com',
-                                 'secure.winred.com',
-                                 't.co',
-                                 'tinyurl.com',
-                                 'twitter.com',
-                                 'wix.com',
-                                 'wixsite.com',
-                                 'wordpress.com',
-                                 'youtube.com'):
-                            # We strip out straight 'wixsite.com', but not 'candidate.wixsite.com'
+                        if organization_website_stripped not in ORGANIZATION_WEBSITES_TO_EXCLUDE_FROM_SCRAPER:
                             if organization_website_stripped in all_html_lower_case:
                                 organization_we_vote_ids_list.append(
                                     one_ballot_item_dict['organization_we_vote_id'])
@@ -3052,6 +3053,139 @@ def find_organization_endorsements_of_candidates_on_one_web_page(site_url, endor
     return results
 
 
+def find_possible_duplicate_candidates_to_merge_with_this_candidate(candidate=None):
+    """
+    Find Candidates that might be duplicates to see if we want to merge them with this Candidate
+
+    :param candidate:
+    :return:
+    """
+    if not hasattr(candidate, 'we_vote_id'):
+        return []
+    try:
+        queryset = CandidateCampaign.objects.using('readonly').all()
+        current_year = get_current_year_as_integer()
+        queryset = queryset.exclude(we_vote_id=candidate.we_vote_id)
+        queryset = queryset.filter(
+            Q(candidate_year__gte=current_year) |
+            Q(candidate_year__isnull=True)
+        )
+        if positive_value_exists(candidate.state_code):
+            queryset = queryset.filter(state_code__iexact=candidate.state_code)
+
+        first_name = candidate.extract_first_name()
+        last_name = candidate.extract_last_name()
+
+        # Eliminated some possibilities we want to see
+        # if positive_value_exists(last_name):
+        #     queryset = queryset.filter(
+        #         Q(candidate_name__icontains=last_name) |
+        #         Q(ballotpedia_candidate_name__icontains=last_name)
+        #     )
+
+        # "OR" filters below
+        filters = []
+
+        new_filter = \
+            Q(candidate_name__icontains=last_name) | \
+            Q(ballotpedia_candidate_name__icontains=last_name)
+        filters.append(new_filter)
+
+        # new_filter = \
+        #     Q(candidate_name__icontains=first_name) & \
+        #     Q(candidate_name__icontains=last_name)
+        # filters.append(new_filter)
+
+        # new_filter = \
+        #     Q(ballotpedia_candidate_name__icontains=first_name) & \
+        #     Q(ballotpedia_candidate_name__icontains=last_name)
+        # filters.append(new_filter)
+
+        new_filter = (
+                Q(candidate_name__iexact=candidate.candidate_name) |
+                Q(ballotpedia_candidate_name__iexact=candidate.candidate_name) |
+                Q(google_civic_candidate_name__iexact=candidate.candidate_name) |
+                Q(google_civic_candidate_name2__iexact=candidate.candidate_name) |
+                Q(google_civic_candidate_name3__iexact=candidate.candidate_name)
+        )
+        filters.append(new_filter)
+
+        if positive_value_exists(candidate.google_civic_candidate_name):
+            new_filter = (
+                    Q(candidate_name__iexact=candidate.google_civic_candidate_name) |
+                    Q(google_civic_candidate_name__iexact=candidate.google_civic_candidate_name) |
+                    Q(google_civic_candidate_name2__iexact=candidate.google_civic_candidate_name) |
+                    Q(google_civic_candidate_name3__iexact=candidate.google_civic_candidate_name)
+            )
+            filters.append(new_filter)
+
+        if positive_value_exists(candidate.google_civic_candidate_name2):
+            new_filter = (
+                    Q(candidate_name__iexact=candidate.google_civic_candidate_name2) |
+                    Q(google_civic_candidate_name__iexact=candidate.google_civic_candidate_name2) |
+                    Q(google_civic_candidate_name2__iexact=candidate.google_civic_candidate_name2) |
+                    Q(google_civic_candidate_name3__iexact=candidate.google_civic_candidate_name2)
+            )
+            filters.append(new_filter)
+
+        if positive_value_exists(candidate.google_civic_candidate_name3):
+            new_filter = (
+                    Q(candidate_name__iexact=candidate.google_civic_candidate_name3) |
+                    Q(google_civic_candidate_name__iexact=candidate.google_civic_candidate_name3) |
+                    Q(google_civic_candidate_name2__iexact=candidate.google_civic_candidate_name3) |
+                    Q(google_civic_candidate_name3__iexact=candidate.google_civic_candidate_name3)
+            )
+            filters.append(new_filter)
+
+        if positive_value_exists(candidate.candidate_twitter_handle):
+            new_filter = (
+                Q(candidate_twitter_handle__iexact=candidate.candidate_twitter_handle) |
+                Q(candidate_twitter_handle2__iexact=candidate.candidate_twitter_handle) |
+                Q(candidate_twitter_handle3__iexact=candidate.candidate_twitter_handle)
+            )
+            filters.append(new_filter)
+
+        if positive_value_exists(candidate.candidate_twitter_handle2):
+            new_filter = (
+                Q(candidate_twitter_handle__iexact=candidate.candidate_twitter_handle2) |
+                Q(candidate_twitter_handle2__iexact=candidate.candidate_twitter_handle2) |
+                Q(candidate_twitter_handle3__iexact=candidate.candidate_twitter_handle2)
+            )
+            filters.append(new_filter)
+
+        if positive_value_exists(candidate.candidate_twitter_handle3):
+            new_filter = (
+                Q(candidate_twitter_handle__iexact=candidate.candidate_twitter_handle3) |
+                Q(candidate_twitter_handle2__iexact=candidate.candidate_twitter_handle3) |
+                Q(candidate_twitter_handle3__iexact=candidate.candidate_twitter_handle3)
+            )
+            filters.append(new_filter)
+
+        if positive_value_exists(candidate.vote_smart_id):
+            new_filter = Q(vote_smart_id=candidate.vote_smart_id)
+            filters.append(new_filter)
+
+        if positive_value_exists(candidate.vote_usa_politician_id):
+            new_filter = Q(vote_usa_politician_id__iexact=candidate.vote_usa_politician_id)
+            filters.append(new_filter)
+
+        # Add the first query
+        if len(filters):
+            final_filters = filters.pop()
+
+            # ...and "OR" the remaining items in the list
+            for item in filters:
+                final_filters |= item
+
+            queryset = queryset.filter(final_filters)
+
+        queryset = queryset.order_by('candidate_name')[:20]
+        related_candidate_list = list(queryset)
+    except Exception as e:
+        related_candidate_list = []
+    return related_candidate_list
+
+
 def organization_endorsements_scanner(endorsement_list_light, text_to_search_lower_case,
                                       candidate_we_vote_ids_list=[], measure_we_vote_ids_list=[]):
     """
@@ -3100,24 +3234,7 @@ def organization_endorsements_scanner(endorsement_list_light, text_to_search_low
                     ballot_item_website = one_ballot_item_dict['ballot_item_website'].lower()
                     # Remove the http... from the candidate website
                     ballot_item_website_stripped = extract_website_from_url(ballot_item_website)
-                    if ballot_item_website_stripped not in \
-                            ('ballotpedia.org',
-                             'bit.ly',
-                             'en.wikipedia.org',
-                             'facebook.com',
-                             'instagram.com',
-                             'linkedin.com',
-                             'nationbuilder.com',
-                             'secure.actblue.com',
-                             'secure.winred.com',
-                             't.co',
-                             'tinyurl.com',
-                             'twitter.com',
-                             'wix.com',
-                             'wixsite.com',
-                             'wordpress.com',
-                             'youtube.com'):
-                        # We strip out straight 'wixsite.com', but not 'candidate.wixsite.com'
+                    if ballot_item_website_stripped not in ORGANIZATION_WEBSITES_TO_EXCLUDE_FROM_SCRAPER:
                         if ballot_item_website_stripped in text_to_search_lower_case:
                             candidate_we_vote_ids_list.append(one_ballot_item_dict['candidate_we_vote_id'])
                             endorsement_list_light_modified.append(one_ballot_item_dict)
