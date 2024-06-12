@@ -162,3 +162,4 @@ web_app/build/*
 /cert/2023/wevotedeveloper.com.crt
 /cert/2023/wevotedeveloper.com_key.txt
 WeVoteServerDB*.pgsql
+/wevote_social/middleware.py
