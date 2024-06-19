@@ -419,6 +419,7 @@ def find_duplicate_candidate(we_vote_candidate, ignore_candidate_id_list, read_o
 
     # Search for other candidates that share the same elections that match name and election
     try:
+        this_year = get_current_year_as_integer()
         results = candidate_list_manager.retrieve_candidates_from_non_unique_identifiers(
             candidate_name=we_vote_candidate.candidate_name,
             candidate_twitter_handle=we_vote_candidate.candidate_twitter_handle,
@@ -428,6 +429,7 @@ def find_duplicate_candidate(we_vote_candidate, ignore_candidate_id_list, read_o
             ignore_candidate_id_list=ignore_candidate_id_list,
             state_code=we_vote_candidate.state_code,
             vote_usa_politician_id=we_vote_candidate.vote_usa_politician_id,
+            year_list=[this_year],
             read_only=read_only,
         )
 
@@ -3062,14 +3064,22 @@ def find_possible_duplicate_candidates_to_merge_with_this_candidate(candidate=No
     """
     if not hasattr(candidate, 'we_vote_id'):
         return []
+
+    candidate_manager = CandidateManager()
+    results = candidate_manager.retrieve_candidates_are_not_duplicates_list(candidate.we_vote_id, read_only=True)
+    candidates_are_not_duplicates_list_we_vote_ids = results['candidates_are_not_duplicates_list_we_vote_ids']
+    candidates_are_not_duplicates_list_we_vote_ids.append(candidate.we_vote_id)
     try:
         queryset = CandidateCampaign.objects.using('readonly').all()
-        current_year = get_current_year_as_integer()
-        queryset = queryset.exclude(we_vote_id=candidate.we_vote_id)
-        queryset = queryset.filter(
-            Q(candidate_year__gte=current_year) |
-            Q(candidate_year__isnull=True)
-        )
+        queryset = queryset.exclude(we_vote_id__in=candidates_are_not_duplicates_list_we_vote_ids)
+        if positive_value_exists(candidate.candidate_year):
+            queryset = queryset.filter(candidate_year=candidate.candidate_year)
+
+        # current_year = get_current_year_as_integer()
+        # queryset = queryset.filter(
+        #     Q(candidate_year__gte=current_year) |
+        #     Q(candidate_year__isnull=True)
+        # )
         if positive_value_exists(candidate.state_code):
             queryset = queryset.filter(state_code__iexact=candidate.state_code)
 
@@ -3087,8 +3097,8 @@ def find_possible_duplicate_candidates_to_merge_with_this_candidate(candidate=No
         filters = []
 
         new_filter = \
-            Q(candidate_name__icontains=last_name) | \
-            Q(ballotpedia_candidate_name__icontains=last_name)
+            Q(candidate_name__iexact=last_name) | \
+            Q(ballotpedia_candidate_name__iexact=last_name)
         filters.append(new_filter)
 
         # new_filter = \
