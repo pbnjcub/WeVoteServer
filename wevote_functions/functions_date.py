@@ -111,4 +111,4 @@ def get_current_year_as_integer():
     except Exception as e:
         current_year = 2024
     return current_year
-    return datetime_now_as_integer
+
