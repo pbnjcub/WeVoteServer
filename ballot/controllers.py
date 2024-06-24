@@ -2098,7 +2098,6 @@ def choose_election_from_existing_data(voter_device_link, google_civic_election_
     voter_ballot_saved_manager = VoterBallotSavedManager()
     status = ""
 
-    breakpoint()
     # If a google_civic_election_id was passed in, then we simply return the ballot that was saved
     if positive_value_exists(google_civic_election_id):
         voter_ballot_saved_results = voter_ballot_saved_manager.retrieve_voter_ballot_saved_by_voter_id(
@@ -2134,8 +2133,6 @@ def choose_election_from_existing_data(voter_device_link, google_civic_election_
             }
             return results
         
-    breakpoint()
-
     if positive_value_exists(voter_device_link.google_civic_election_id):
         # If the voter_device_link was updated within the last day, use that election_id.
         # We do this check because we don't want a voter to return to an election they are just investigating which
