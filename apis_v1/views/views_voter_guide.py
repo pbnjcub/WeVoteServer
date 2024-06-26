@@ -230,10 +230,21 @@ def voter_guide_possibility_save_view(request):  # voterGuidePossibilitySave
     clear_organization_options = request.GET.get('clear_organization_options', None)
     contributor_comments = request.GET.get('contributor_comments', None)
     contributor_email = request.GET.get('contributor_email', None)
-    candidates_missing_from_we_vote = request.GET.get('candidates_missing_from_we_vote', None)
-    capture_detailed_comments = request.GET.get('capture_detailed_comments', None)
-    hide_from_active_review = request.GET.get('hide_from_active_review', None)
-    ignore_this_source = request.GET.get('ignore_this_source', None)
+    candidates_missing_from_we_vote = \
+        request.GET.get('candidates_missing_from_we_vote', None)  # filter_selected_candidates_missing
+    cannot_find_endorsements = \
+        request.GET.get('cannot_find_endorsements', None)  # filter_selected_not_available_yet
+    capture_detailed_comments = \
+        request.GET.get('capture_detailed_comments', None)  # filter_selected_capture_detailed_comments
+    done_needs_verification = \
+        request.GET.get('done_needs_verification', None)  # filter_selected_done_needs_verification
+    done_verified = \
+        request.GET.get('done_verified', None)  # filter_selected_done_verified
+    from_prior_election = \
+        request.GET.get('from_prior_election', None)  # filter_selected_from_prior_election
+    hide_from_active_review = \
+        request.GET.get('hide_from_active_review', None)  # filter_selected_archive
+    ignore_this_source = request.GET.get('ignore_this_source', None)  # filter_selected_ignore
     internal_notes = request.GET.get('internal_notes', None)
     limit_to_this_state_code = request.GET.get('limit_to_this_state_code', None)
     organization_we_vote_id = request.GET.get('organization_we_vote_id', None)
@@ -246,10 +257,14 @@ def voter_guide_possibility_save_view(request):  # voterGuidePossibilitySave
         voter_device_id=voter_device_id,
         voter_guide_possibility_id=voter_guide_possibility_id,
         candidates_missing_from_we_vote=candidates_missing_from_we_vote,
+        cannot_find_endorsements=cannot_find_endorsements,
         capture_detailed_comments=capture_detailed_comments,
         clear_organization_options=clear_organization_options,
         contributor_comments=contributor_comments,
         contributor_email=contributor_email,
+        done_needs_verification=done_needs_verification,
+        done_verified=done_verified,
+        from_prior_election=from_prior_election,
         hide_from_active_review=hide_from_active_review,
         ignore_this_source=ignore_this_source,
         internal_notes=internal_notes,
