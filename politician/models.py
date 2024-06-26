@@ -6,7 +6,6 @@ import re
 from datetime import datetime
 
 import gender_guesser.detector as gender
-from typing import List
 from django.db import models
 from django.db.models import Q
 
@@ -372,7 +371,7 @@ class Politician(models.Model):
     def __unicode__(self):
         return self.last_name
 
-    def get_recommendation(self) -> List[str]:
+    def get_recommendation(self) -> list[str]:
 
         """
             Get a list of recommended politicians for the current politician.
@@ -546,7 +545,7 @@ class PoliticianManager(models.Manager):
         pass
 
     @staticmethod
-    def retrieve_recommend_list_by_we_vote_id(we_vote_id: str) -> List[RecommendedPoliticianLinkByPolitician]:
+    def retrieve_recommend_list_by_we_vote_id(we_vote_id: str) -> list[RecommendedPoliticianLinkByPolitician]:
 
         """
         retrieve a list of recommended politicians for a given politician's we vote ID.
@@ -575,7 +574,7 @@ class PoliticianManager(models.Manager):
         else:
             return empty_list
 
-    def fetch_recommend_list_by_we_vote_id(self, we_vote_id: str) -> List[str]:
+    def fetch_recommend_list_by_we_vote_id(self, we_vote_id: str) -> list[str]:
 
         """
         Fetch a list of We Vote IDs of recommended politicians for a given politician's We Vote ID.
